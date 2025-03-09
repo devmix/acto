@@ -1,0 +1,68 @@
+@startuml
+
+left to right direction
+'skinparam linetype polyline
+'skinparam linetype ortho
+
+skinparam map {
+    BackGroundColor<<optional>> #D5E8D4
+    BackGroundColor<<required>> #DAE8FC
+}
+
+map "Object 1" as object1 <<required>> {
+    id => 1
+    dependencies =>
+        out3 => Object
+}
+
+map "Object 2" as object2 <<required>> {
+    id => 2
+    dependencies =>
+        in1 => Object
+        out3 => Object
+}
+
+map "Object 3" as object3 <<required>> {
+    id => 3
+    dependencies =>
+        in2 => Object
+        out4 => Object
+        out5 => Object
+        out6 => Object
+}
+
+map "Object 4" as object4 <<required>> {
+    id => 4
+    dependencies =>
+        in3 => Object
+}
+
+map "Object 5" as object5 <<required>> {
+    id => 5
+    dependencies =>
+        in3 => Object
+}
+
+map "Object 6" as object6 <<optional>> {
+    id => 6
+    dependencies =>
+        in3 => Object
+}
+
+object1::out3 --> object2::id : depends on
+
+object2::in1 ..> object1::id
+object2::out3 --> object3::id : depends on
+
+object3::in2 ..> object2::id
+object3::out4 --> object4::id : depends on
+object3::out5 --> object5::id : depends on
+object3::out6 ..> object6::id : depends on (optional)
+
+object4::in3 ..> object3::id
+
+object5::in3 ..> object3::id
+
+object6::in3 ..> object3::id
+
+@enduml

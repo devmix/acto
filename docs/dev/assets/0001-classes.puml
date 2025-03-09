@@ -1,0 +1,100 @@
+@startuml
+
+skinparam class {
+    BackGroundColor<<service>> #D5E8D4
+    BackGroundColor<<instance>> #DAE8FC
+    FontSize<<lifecycle>> 12
+}
+
+package acto.listeners <<frame>> {
+    interface OnCreateListener {}
+    interface OnStartListener {}
+    interface OnIdleListener {}
+    interface OnStopListener {}
+    interface OnDestroyListener {}
+}
+
+class POJO<<instance>> extends OnCreateListener,OnStartListener,OnIdleListener,OnStopListener,OnDestroyListener {}
+note left of POJO
+    User defined class.
+    May extend any lifecycle listeners.
+end note
+
+package acto.messages <<frame>> {
+    class Destroy {}
+    class Start {}
+    class Idle$Activate {}
+    class Idle$Deactivate {}
+    class Stop {}
+}
+note bottom of acto.messages
+    Lifecycle messages.
+    Some from them may be sent automatically.
+        E.g. `Idle$Deactivate` / `Idle$Activate`
+end note
+
+package acto <<frame>> {
+    class ActiveObject<T><<instance>> {}
+    note right of ActiveObject
+        Public interface for POJO.
+        Any requests to a POJO MUST be via this class.
+    end note
+
+    interface ActiveObjectFactory {}
+    note left of ActiveObjectFactory
+        User defined factory for POJO
+    end note
+
+    class ActiveObjectRegistry<<service>> {}
+    note left of ActiveObjectRegistry
+        Manages all created active objects.
+    end note
+
+    class ActiveObjectContext<<instance>> {}
+
+    class ActiveObjectDependency<<instance>> {}
+    note bottom of ActiveObjectDependency
+        Holds the dependency information of the object.
+        E.g. depends on or require for objects, status.
+    end note
+
+    class QueueDispatchingTask<<instance>> {}
+    note bottom of QueueDispatchingTask
+        Internal messages queue processing task.
+    end note
+
+    class Queue<<instance>> {}
+    note bottom of Queue
+        Incoming messages queue.
+    end note
+
+    enum ActiveObjectStatus <<lifecycle>> {
+        ""[POJO]     > //CREATING//     > **CREATED**     >""
+        ""START      > //STARTING//     > **STARTED**     >""
+        ""ACTIVATE   > //ACTIVATING//   > **ACTIVATED**   >""
+        ""DEACTIVATE > //DEACTIVATING// > **DEACTIVATED** >""
+        ""STOP       > //STOPPING//     > **STOPPED**     >""
+        ""DESTROY    > //DESTROYING//   > **DESTROYED**    ""
+    }
+}
+
+POJO --o ActiveObjectContext
+POJO <-- ActiveObjectFactory
+
+ActiveObjectFactory --* ActiveObjectRegistry
+ActiveObjectContext --* ActiveObjectRegistry
+
+ActiveObjectContext -o ActiveObject
+ActiveObjectContext o-- QueueDispatchingTask
+ActiveObjectContext *-- ActiveObjectDependency
+ActiveObjectContext o---- ActiveObjectStatus
+ActiveObjectContext o-- Queue
+
+
+Destroy ..> ActiveObject
+Start ..> ActiveObject
+Idle$Activate ..> ActiveObject
+Idle$Deactivate ..> ActiveObject
+Stop ..> ActiveObject
+
+@enduml
