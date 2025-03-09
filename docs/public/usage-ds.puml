@@ -1,0 +1,10 @@
+@startuml
+
+component [Data Source] as ds
+component [Data Table] as dt
+component [User Interface] as ui
+
+ui ..> dt: use
+dt -> ds: use
+
+@enduml

@@ -1,0 +1,78 @@
+@startuml
+
+boundary    "UI"    as ui
+control     "ObjectsManager"    as om
+control     "Object 1"          as o1
+queue       "Queue 1"           as q1
+control     "Object 2"          as o2
+queue       "Queue 2"           as q2
+control     "Object 3"          as o3
+queue       "Queue 3"           as q3
+control     "Object 4"          as o4
+queue       "Queue 4"           as q4
+control     "Object 5"          as o5
+queue       "Queue 5"           as q5
+control     "Object 6"          as o6
+queue       "Queue 6"           as q6
+database    "Persistence"       as db
+
+== Initialization ==
+
+om -> db : load object states
+return states
+'activate supervisor
+
+group for each object
+    om -> o1 ** : create
+        note right : IDLE
+        o1 -> q1 ** : create
+        activate o1
+    om -> o2 ** : create
+        note right : IDLE
+        o2 -> q2 ** : create
+        activate o2
+    om -> o3 ** : create
+        note right : IDLE
+        o3 -> q3 ** : create
+        activate o3
+    om -> o4 ** : create
+        note right : IDLE
+        o4 -> q4 ** : create
+        activate o4
+    om -> o5 ** : create
+        note right : IDLE
+        o5 -> q5 ** : create
+        activate o5
+    om -> o6 ** : create
+        note right : IDLE
+        o6 -> q6 ** : create
+        activate o6
+end
+
+== Preconditions ==
+
+o1 -> o1 ++ : start
+    o1 -> o1 : status ACTIVE
+    o1 -> o1 : outgoing dependencies **o2**
+return success
+
+== Stop Object 2 ==
+
+ui -> om : stop (sync)
+om -> om : find object by id
+om -> o2 : execute stop
+o2 -> q2 ++ : add message & start dispatcher
+    o2 --> om : return **stop** promise
+    om -> om ++ : wait **request** promise
+
+    loop while queue is not empty
+    q2 -> q2 ++ : next message
+
+    deactivate q2
+    end
+
+    return stop waiting
+deactivate q2
+om --> ui : request result
+
+@enduml

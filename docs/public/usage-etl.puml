@@ -1,0 +1,14 @@
+@startuml
+
+component [Source Endpoint] as se
+component [Target Endpoint] as te
+component [Transformer] as t
+component [Pipeline] as p
+component [User Interface] as ui
+
+ui ..> p: use
+p ..> se: use
+p ..> te: use
+p ..> t: use
+
+@enduml

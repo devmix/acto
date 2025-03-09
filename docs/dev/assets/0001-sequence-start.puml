@@ -1,0 +1,135 @@
+@startuml
+
+boundary    "UI"    as ui
+control     "ObjectsManager"    as om
+control     "Object 1"          as o1
+queue       "Queue 1"           as q1
+control     "Object 2"          as o2
+queue       "Queue 2"           as q2
+control     "Object 3"          as o3
+queue       "Queue 3"           as q3
+control     "Object 4"          as o4
+queue       "Queue 4"           as q4
+control     "Object 5"          as o5
+queue       "Queue 5"           as q5
+control     "Object 6"          as o6
+queue       "Queue 6"           as q6
+database    "Persistence"       as db
+
+== Initialization ==
+
+om -> db : load object states
+return states
+'activate supervisor
+
+group for each object
+    om -> o1 ** : create
+        note right : IDLE
+        o1 -> q1 ** : create
+        activate o1
+    om -> o2 ** : create
+        note right : IDLE
+        o2 -> q2 ** : create
+        activate o2
+    om -> o3 ** : create
+        note right : IDLE
+        o3 -> q3 ** : create
+        activate o3
+    om -> o4 ** : create
+        note right : IDLE
+        o4 -> q4 ** : create
+        activate o4
+    om -> o5 ** : create
+        note right : IDLE
+        o5 -> q5 ** : create
+        activate o5
+    om -> o6 ** : create
+        note right : IDLE
+        o6 -> q6 ** : create
+        activate o6
+end
+
+== Send request to Object 2 ==
+
+ui -> om : do request (sync)
+om -> om : find object by id
+om -> o2 : execute request
+o2 -> q2 ++ : add message & start dispatcher
+    o2 --> om : return **request** promise
+    om -> om ++ : wait **request** promise
+        loop while queue is not empty
+        q2 -> q2 ++ : next message
+            q2 -> q2 : check status
+
+            alt IDLE
+                q2 -> o2 ++ : start
+                    o2 -> o2 : check dependencies
+
+                    group start **o2** dependencies
+                    q2 -> o3 : start **o3**
+                    o3 -> q3 ++ : add message & start dispatcher
+                        o3 --> q2 : return **o3** promise
+                        q2 -> q2 ++ : wait **o3** promise
+                            q3 -> q3 ++ : process **START**
+                                q3 -> o3 ++ : start
+                                    o3 -> o3 : check dependencies
+                                    o3 -> o3 : store incoming dependency **o2**
+
+                                    group start **o3** dependencies
+                                    q3 -> o4 : start **o4**
+                                    o4 -> q4 ++ : add message & start dispatcher
+                                        o4 --> q3 : return **o4** promise
+                                        q3 -> q3 ++ : wait **o4** promise
+                                            q4 -> q4 ++ : process **START**
+                                                q4 -> o4 ++ : start
+                                                    o4 -> o4 : check dependencies
+                                                    o4 -> o4 : store incoming dependency **o3**
+                                                    o4 -> o4 : change status to ACTIVE
+                                                return started
+                                                q4 --> q3 : complete **o4** promise
+                                            deactivate q4
+                                        return **o4** started
+                                    deactivate q4
+
+                                    q3 -> o5 : start **o5**
+                                    o5 -> q5 ++ : add message & start dispatcher
+                                        o5 --> q3 : return **o5** promise
+                                        q3 -> q3 ++ : wait **o5** promise
+                                            q5 -> q5 ++ : process **START**
+                                                q5 -> o5 ++ : start
+                                                    o5 -> o5 : check dependencies
+                                                    o5 -> o5 : store incoming dependency **o3**
+                                                    o5 -> o5 : change status to ACTIVE
+                                                return started
+                                                q5 --> q3 : complete **o5** promise
+                                            deactivate q5
+                                        return **o5** started
+                                    deactivate q5
+                                    end
+
+                                    o3 -> o3 : store outgoing dependencies **o3**, **o4**
+
+                                    o3 -> o3 : change status to ACTIVE
+                                return started
+                                q3 --> q2 : complete **o3** promise
+                            deactivate q3
+                        return **o3** started
+                    deactivate q3
+                    end
+
+                    o2 -> o2 : change status to ACTIVE
+                return started
+            else ACTIVE
+                q2 -> o2 ++ : process **request**
+                return request result
+                q2 --> om : complete **request** promise
+            else OTHER
+                q2 --> om : throw exception for **request** promise
+            end
+        deactivate q2
+        end
+    return stop waiting
+deactivate q2
+om --> ui : request result
+
+@enduml
