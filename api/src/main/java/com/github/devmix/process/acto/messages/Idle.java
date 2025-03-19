@@ -1,3 +1,21 @@
+/*
+ * devMix · Process · Active Objects [ActO]
+ * Copyright (C) 2025, Sergey Grachev <sergey.grachev@yahoo.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package com.github.devmix.process.acto.messages;
 
 import lombok.Getter;
@@ -53,6 +71,10 @@ public final class Idle {
      * transitioning from idle to active state.
      */
     public static final class Activate {
+        /**
+         * Default constructor for creating an {@link Activate} message instance.
+         */
+        public Activate() {}
     }
 
     /**
@@ -60,7 +82,7 @@ public final class Idle {
      * transitioning from active to idle state. The transition can be forced
      * immediately if specified.
      *
-     * @see #isForce()
+     * @see Deactivate#force
      */
     @RequiredArgsConstructor
     public static final class Deactivate {

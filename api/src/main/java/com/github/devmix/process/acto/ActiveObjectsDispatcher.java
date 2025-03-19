@@ -1,3 +1,21 @@
+/*
+ * devMix · Process · Active Objects [ActO]
+ * Copyright (C) 2025, Sergey Grachev <sergey.grachev@yahoo.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package com.github.devmix.process.acto;
 
 import javax.annotation.Nullable;
@@ -38,6 +56,7 @@ public interface ActiveObjectsDispatcher {
     /**
      * Finds an active object by its ID. If no active object is found with that ID, returns null.
      *
+     * @param <T> The type of the active object to find.
      * @param id The unique identifier of the active object to find.
      * @return An instance of ActiveObject if found; otherwise, null.
      */
@@ -48,6 +67,7 @@ public interface ActiveObjectsDispatcher {
      * Finds an active object by its ID. If no active object is found with that ID,
      * this method throws an exception.
      *
+     * @param <T> The type of the active object to find.
      * @param id The unique identifier of the active object to find.
      * @return An instance of ActiveObject if found.
      * @throws IllegalArgumentException If no active object is found with the specified ID.
@@ -86,6 +106,8 @@ public interface ActiveObjectsDispatcher {
      * Registers a lifecycle callback for the specified class type. This callback will be invoked
      * when active objects of that type are created or destroyed.
      *
+     * @param <I>         The type of identifier used by this lifecycle.
+     * @param <O>         The type of options used by this lifecycle.
      * @param <T>         The type of active object for which the lifecycle is being registered.
      * @param objectClass The class type of the active objects for which this lifecycle will be used.
      * @param lifecycle   An instance of ActiveObjectLifecycle to register.
