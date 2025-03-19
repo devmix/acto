@@ -9,6 +9,18 @@ An implementation variant of Active Objects with the following features:
 - **Customizable Lifecycles**: Allows customization of object lifecycles, including initialization and termination.
 - **Single Dispatcher**: Uses a single dispatcher to manage all active objects.
 
+## Download
+
+Artifact can be downloaded from [Maven Central](https://central.sonatype.com/artifact/com.github.devmix.process.acto/devmix-process-acto-core).
+
+```xml
+<dependency>
+    <groupId>com.github.devmix.process.acto</groupId>
+    <artifactId>devmix-process-acto-core</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
 ## Example
 
 Create and send message (`getCounter`) to an [EchoObject](core/src/test/java/com/github/devmix/process/acto/fixtures/EchoObject.java) / [EchoOptions](core/src/test/java/com/github/devmix/process/acto/fixtures/EchoOptions.java):
