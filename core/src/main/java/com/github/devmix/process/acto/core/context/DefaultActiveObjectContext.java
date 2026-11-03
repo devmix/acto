@@ -54,14 +54,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -79,10 +78,9 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final @Getter Object options;
     private final ActiveObjectsDispatcher dispatcher;
     private final ForkJoinPool executor;
-    //    private final AtomicLong numberOfThreads = new AtomicLong(0);
     private final AtomicBoolean queueTaskRunning = new AtomicBoolean();
+    private final AtomicInteger pendingMessages = new AtomicInteger();
     private final LinkedBlockingDeque<QueueEntry<?>> queue = new LinkedBlockingDeque<>();
-    private final AtomicReference<QueueDispatchingTask> dispatchingTask = new AtomicReference<>();
 
     private Map<Object, DependencyState> dependencies;
 
@@ -116,12 +114,14 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     @Override
-    public void awaitEmptyQueue(final long timeout, final TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-        if (queueTaskRunning.compareAndSet(true, false)) {
-            final var task = dispatchingTask.get();
-            if (task != null) {
-                task.get(timeout, unit);
+    public void awaitEmptyQueue(final long timeout, final TimeUnit unit) throws InterruptedException, TimeoutException {
+        final var deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+        while (pendingMessages.get() != 0) {
+            if (System.nanoTime() >= deadlineNanos) {
+                throw new TimeoutException("Queue is not empty: " + this);
             }
+            //noinspection BusyWait
+            Thread.sleep(1);
         }
     }
 
@@ -289,17 +289,15 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private <R> void addToQueue(final QueueEntry<R> entry) {
+        pendingMessages.incrementAndGet();
         final var message = entry.message();
         if ((message instanceof Stop stop && stop.isForce())
                 || message instanceof InternalDestroy) {
 
-            if (queueTaskRunning.compareAndSet(true, false)) {
-                final var task = dispatchingTask.get();
-                if (task != null) {
-                    task.cancel(true);
-                }
-            }
-
+            // priority insertion into the head of the queue: the running dispatch task
+            // (if any) will process it right after the current message.
+            // Cancelling the running task is impossible (ForkJoinTask.cancel does not
+            // interrupt exec()) and would break the single-consumer invariant.
             queue.offerFirst(entry);
         } else {
             queue.offerLast(entry);
@@ -735,9 +733,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             return;
         }
 
-        final var task = new QueueDispatchingTask();
-        executor.submit(task);
-        dispatchingTask.set(task);
+        executor.submit(new QueueDispatchingTask());
     }
 
     private void startDependency(final Start message, final DependencyState dependency, final Object dependencyId) {
@@ -809,7 +805,6 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         private static final long serialVersionUID = -1386299394796439117L;
 
         public boolean exec() {
-            //            numberOfThreads.incrementAndGet();
             try {
                 while (queueTaskRunning.get()) {
                     var msg = queue.poll();
@@ -832,15 +827,11 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     } catch (final Exception e) {
                         LOG.error(e.getMessage(), e);
                         msg.fail(e);
+                    } finally {
+                        pendingMessages.decrementAndGet();
                     }
                 }
             } finally {
-//                if (numberOfThreads.decrementAndGet() > 0) {
-//                    LOG.warn("parallel threads in the dispatcher {}, {}", numberOfThreads.get(), id);
-//                } else {
-//                LOG.warn("stop dispatcher {}, {}", numberOfThreads.get(), id);
-//                }
-                dispatchingTask.set(null);
                 queueTaskRunning.set(false);
                 if (!queue.isEmpty()) {
                     processNextMessages();
