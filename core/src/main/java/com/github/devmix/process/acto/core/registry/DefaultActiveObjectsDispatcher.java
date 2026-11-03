@@ -79,7 +79,8 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
 
     public DefaultActiveObjectsDispatcher(final DispatcherConfig config) {
         this.config = config;
-        this.executor = Executors.newVirtualThreadPerTaskExecutor();
+        this.executor = Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name("acto-dispatch-", 0).factory());
         start();
     }
 
