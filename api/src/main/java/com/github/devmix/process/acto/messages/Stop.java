@@ -107,6 +107,9 @@ public final class Stop {
      * Creates a new stop message with the force flag set to true.
      * <p>
      * The resulting stop operation will be mandatory and cannot be ignored by any Active Object.
+     * A forced stop message is inserted at the head of the message queue and is guaranteed to be
+     * processed right after the currently running message handler; it does not interrupt a
+     * currently running handler.
      *
      * @return a new forced Stop message
      */
