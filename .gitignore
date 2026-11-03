@@ -36,3 +36,5 @@ build/
 
 ### Mac OS ###
 .DS_Store
+### local debugging harness ###
+core/src/test/java/com/github/devmix/acto/Main.java

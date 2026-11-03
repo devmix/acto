@@ -19,16 +19,47 @@
 package com.github.devmix.process.acto.core.context;
 
 /**
+ * Destroy marker message.
+ * <ul>
+ *     <li>graceful ({@code force == false}): appended to the tail of the queue, so every message
+ *     accepted before the destroy request is processed first — no accepted work is lost;</li>
+ *     <li>forced ({@code force == true}): inserted at the head of the queue, the remaining queued
+ *     messages are discarded and their futures completed exceptionally.</li>
+ * </ul>
+ *
  * @author Sergey Grachev
  */
 public final class InternalDestroy {
 
-    private static final InternalDestroy INSTANCE = new InternalDestroy();
+    private static final InternalDestroy GRACEFUL = new InternalDestroy(false);
+    private static final InternalDestroy FORCE = new InternalDestroy(true);
 
-    private InternalDestroy() {
+    private final boolean force;
+
+    private InternalDestroy(final boolean force) {
+        this.force = force;
     }
 
+    /**
+     * Graceful destroy: the object finishes all queued messages before being destroyed.
+     */
     public static InternalDestroy instance() {
-        return INSTANCE;
+        return GRACEFUL;
+    }
+
+    /**
+     * Forced destroy: queued messages are discarded without processing.
+     */
+    public static InternalDestroy force() {
+        return FORCE;
+    }
+
+    public boolean isForce() {
+        return force;
+    }
+
+    @Override
+    public String toString() {
+        return "InternalDestroy{force=" + force + '}';
     }
 }
