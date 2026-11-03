@@ -46,6 +46,7 @@ final var dispatcher = new DefaultActiveObjectsDispatcher(DispatcherConfig.build
 | `debugLifecycleLogging` | `false` | log lifecycle events on the INFO level (otherwise DEBUG) |
 | `queueCapacity` | `0` | maximum number of queued user messages per object; `0` = unlimited |
 | `queueOverflowPolicy` | `FAIL` | `FAIL` rejects new messages with `QueueOverflowException`; `BLOCK` waits for a free slot |
+| `metrics` | `DispatcherMetrics.NOOP` | observability hooks: processed/rejected messages, queue depth, destroyed objects; optional `MicrometerDispatcherMetrics` backend |
 
 ## Example
 
