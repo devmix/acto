@@ -21,6 +21,7 @@ package com.github.devmix.process.acto.core.registry;
 import com.github.devmix.process.acto.ActiveObject;
 import com.github.devmix.process.acto.ActiveObjectFactory;
 import com.github.devmix.process.acto.ActiveObjectLifecycle;
+import com.github.devmix.process.acto.ActiveObjectStatus;
 import com.github.devmix.process.acto.ActiveObjectsDispatcher;
 import com.github.devmix.process.acto.core.context.DefaultActiveObjectContext;
 import com.github.devmix.process.acto.core.context.InternalDestroy;
@@ -53,7 +54,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
     private final ForkJoinPool executor;
     private final AtomicBoolean started = new AtomicBoolean();
 
-    private HeartbeatTask heartbeatTask;
+    private volatile HeartbeatTask heartbeatTask;
     private long heartbeatInterval;
 
     public DefaultActiveObjectsDispatcher() {
@@ -81,9 +82,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
         }
 
         return (ActiveObject<T>) contexts.compute(id, (k, current) -> {
-            if (current != null) {
-                throw new RegistryException("Object with ID=[" + k + "] already registered");
-            }
+            checkExisting(k, current);
 
             log.debug("create new object: factory=[{}] lifecycle=[{}] id=[{}]", factory, lifecycle, k);
 
@@ -101,9 +100,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
         }
 
         return (ActiveObject<T>) contexts.compute(id, (k, current) -> {
-            if (current != null) {
-                throw new RegistryException("Object with ID=[" + k + "] already registered");
-            }
+            checkExisting(k, current);
 
             final var instance = factory.create(id, options);
             final var lifecycle = (ActiveObjectLifecycle<T>) objectLifecycles.get(instance.getClass());
@@ -166,17 +163,18 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
     @Override
     public void shutdown(final boolean force) {
         if (started.compareAndSet(true, false)) {
-            boolean success = true;
-            for (final var context : new ArrayList<>(contexts.values())) {
-                if (!destroy(context.getId(), force) && !force) {
-                    success = false;
-                    break;
+            try {
+                for (final var context : new ArrayList<>(contexts.values())) {
+                    if (!destroy(context.getId(), force) && !force) {
+                        break;
+                    }
                 }
-            }
-
-            if (success) {
-                heartbeatTask.cancel(true);
-                heartbeatTask = null;
+            } finally {
+                final var task = heartbeatTask;
+                if (task != null) {
+                    task.cancel(true);
+                    heartbeatTask = null;
+                }
             }
         }
     }
@@ -190,31 +188,49 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
 
     @Override
     public boolean destroy(final Object objectId, final boolean force) {
-        var context = contexts.remove(objectId);
-        if (context != null) {
-            try {
-                final var success = context.request(InternalDestroy.instance())
-                        .get(getObjectStopTimeout(), TimeUnit.MILLISECONDS);
-
-                if (Boolean.TRUE.equals(success)) {
-                    context = null;
-                }
-            } catch (final InterruptedException | TimeoutException | ExecutionException e) {
-                log.error("Cannot destroy object", e);
-                if (!force) {
-                    throw new RegistryException(e.getMessage(), e);
-                }
-            } finally {
-                if (context != null) {
-                    contexts.put(context.getId(), context);
-                }
-            }
+        final var context = contexts.get(objectId);
+        if (context == null) {
+            return false;
         }
-        return context == null;
+
+        try {
+            final var success = context.request(InternalDestroy.instance())
+                    .get(getObjectStopTimeout(), TimeUnit.MILLISECONDS);
+
+            if (Boolean.TRUE.equals(success)) {
+                // remove only this context: a concurrent create() may have already replaced it
+                contexts.remove(objectId, context);
+                return true;
+            }
+            return false;
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while destroying object: {}", objectId);
+            return false;
+        } catch (final TimeoutException | ExecutionException e) {
+            log.error("Cannot destroy object: {}", objectId, e);
+            return false;
+        }
     }
 
     private long getObjectStopTimeout() {
         return TimeUnit.SECONDS.toMillis(15);
+    }
+
+    private void checkExisting(final Object id, final DefaultActiveObjectContext<?> current) {
+        if (current == null) {
+            return;
+        }
+
+        final var status = current.getStatus();
+        if (status == ActiveObjectStatus.DESTROYED) {
+            log.debug("replace already destroyed object with ID=[{}]", id);
+            return;
+        }
+        if (status == ActiveObjectStatus.DESTROYING) {
+            throw new RegistryException("Object with ID=[" + id + "] is being destroyed");
+        }
+        throw new RegistryException("Object with ID=[" + id + "] already registered");
     }
 
     private void start() {
