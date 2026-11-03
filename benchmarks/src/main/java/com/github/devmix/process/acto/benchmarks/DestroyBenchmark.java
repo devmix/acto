@@ -30,6 +30,7 @@ import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
@@ -78,6 +79,11 @@ public class DestroyBenchmark {
         ids = new AtomicInteger();
     }
 
+    @TearDown(Level.Trial)
+    public void tearDown() {
+        registry.shutdown(true);
+    }
+
     private ActiveObject<Slow> create(final boolean withLoad) {
         final var id = "obj-" + ids.incrementAndGet();
         final var object = registry.create((oid, options) -> new Slow(), id, null);
@@ -92,24 +98,40 @@ public class DestroyBenchmark {
     @Benchmark
     public boolean gracefulDestroyEmptyQueue() {
         final var object = create(false);
-        return registry.destroy(object.getId(), false);
+        final var destroyed = registry.destroy(object.getId(), false);
+        if (!destroyed) {
+            throw new AssertionError("destroy failed");
+        }
+        return destroyed;
     }
 
     @Benchmark
     public boolean forcedDestroyEmptyQueue() {
         final var object = create(false);
-        return registry.destroy(object.getId(), true);
+        final var destroyed = registry.destroy(object.getId(), true);
+        if (!destroyed) {
+            throw new AssertionError("destroy failed");
+        }
+        return destroyed;
     }
 
     @Benchmark
     public boolean gracefulDestroyLoadedQueue() {
         final var object = create(true);
-        return registry.destroy(object.getId(), false);
+        final var destroyed = registry.destroy(object.getId(), false);
+        if (!destroyed) {
+            throw new AssertionError("destroy failed");
+        }
+        return destroyed;
     }
 
     @Benchmark
     public boolean forcedDestroyLoadedQueue() {
         final var object = create(true);
-        return registry.destroy(object.getId(), true);
+        final var destroyed = registry.destroy(object.getId(), true);
+        if (!destroyed) {
+            throw new AssertionError("destroy failed");
+        }
+        return destroyed;
     }
 }

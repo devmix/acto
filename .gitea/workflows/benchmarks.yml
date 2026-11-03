@@ -36,7 +36,11 @@ jobs:
       - name: Build benchmarks
         run: ./mvnw -ntp -Pbenchmarks -pl api,core,benchmarks clean verify
 
+      - name: Smoke test the jar
+        run: java -jar benchmarks/target/benchmarks.jar -l > /dev/null
+
       - name: Run benchmarks
+        timeout-minutes: 30
         run: java -jar benchmarks/target/benchmarks.jar -rf json -rff baseline.json
 
       - uses: actions/upload-artifact@v4
