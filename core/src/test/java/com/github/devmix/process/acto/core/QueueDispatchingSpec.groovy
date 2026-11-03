@@ -16,7 +16,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.github.devmix.process.acto
+package com.github.devmix.process.acto.core
+
+import com.github.devmix.process.acto.*
 
 import com.github.devmix.process.acto.core.registry.DefaultActiveObjectsDispatcher
 import com.github.devmix.process.acto.listeners.OnDestroyListener
