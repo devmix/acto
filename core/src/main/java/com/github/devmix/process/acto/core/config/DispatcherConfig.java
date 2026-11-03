@@ -54,6 +54,16 @@ public final class DispatcherConfig {
     private final Duration waitMessagesTimeout = Duration.ofMillis(500);
 
     /**
+     * Default deadline for user messages sent through {@code request()}: the returned future
+     * completes with {@code TimeoutException} if the message is not processed within this
+     * time. A timed-out or cancelled message is skipped when the dispatcher reaches it, so a
+     * stuck object does not execute work nobody waits for anymore. {@code ZERO} disables
+     * the deadline.
+     */
+    @Builder.Default
+    private final Duration messageTimeout = Duration.ZERO;
+
+    /**
      * How long {@code destroy()} waits for the object to be destroyed.
      */
     @Builder.Default
