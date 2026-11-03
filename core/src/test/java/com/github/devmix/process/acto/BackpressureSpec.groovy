@@ -21,10 +21,13 @@ package com.github.devmix.process.acto
 import com.github.devmix.process.acto.core.config.DispatcherConfig
 import com.github.devmix.process.acto.core.config.QueueOverflowPolicy
 import com.github.devmix.process.acto.core.registry.DefaultActiveObjectsDispatcher
+import com.github.devmix.process.acto.exceptions.DispatchingException
 import com.github.devmix.process.acto.exceptions.QueueOverflowException
 import com.github.devmix.process.acto.listeners.OnMessageListener
 import spock.lang.Specification
 
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -49,6 +52,21 @@ class BackpressureSpec extends Specification {
             }
             processed.incrementAndGet()
             return message
+        }
+    }
+
+    static class SelfSender implements OnMessageListener<SelfSender> {
+        final CountDownLatch done = new CountDownLatch(2)
+
+        @Override
+        Object onObjectMessage(final Object message, final ActiveObjectContext<SelfSender> context) {
+            if ('fan'.equals(message)) {
+                Thread.sleep(100)
+                context.redirectRequestAndForget(context.getId(), 'child')
+                return null
+            }
+            done.countDown()
+            return null
         }
     }
 
@@ -165,6 +183,57 @@ class BackpressureSpec extends Specification {
         then: 'destroy goes through'
         destroyed
         registry.findById('slow') == null
+
+        cleanup:
+        registry.shutdown(true)
+    }
+
+    def 'BLOCK policy does not deadlock when an object sends a message to itself'() {
+        given: 'a queue of capacity 1 and a handler that fans out to its own queue'
+        def config = DispatcherConfig.builder()
+                .queueCapacity(1)
+                .queueOverflowPolicy(QueueOverflowPolicy.BLOCK)
+                .build()
+        def registry = new DefaultActiveObjectsDispatcher(config)
+        def sender = new SelfSender()
+        def object = registry.create({ id, options -> sender }, 'fan', null)
+
+        when: 'the queue fills up while the handler is busy'
+        object.requestAndForget('fan')
+        Thread.sleep(50)
+        object.requestAndForget('fill')
+
+        then: 'the self-sent message is processed anyway: no deadlock'
+        sender.done.await(5, TimeUnit.SECONDS)
+
+        cleanup:
+        registry.shutdown(true)
+    }
+
+    def 'interrupting a producer blocked by BLOCK policy fails its future'() {
+        given: 'a queue of capacity 1 occupied by a slow message'
+        def config = DispatcherConfig.builder()
+                .queueCapacity(1)
+                .queueOverflowPolicy(QueueOverflowPolicy.BLOCK)
+                .build()
+        def registry = new DefaultActiveObjectsDispatcher(config)
+        def slow = new Slow(1000)
+        def object = registry.create({ id, options -> slow }, 'slow', null)
+        object.requestAndForget('slow')
+        Thread.sleep(50)
+        object.requestAndForget('m1')
+
+        when: 'a producer waits for a free slot and gets interrupted'
+        CompletableFuture<Object> future = null
+        def producer = Thread.start { future = object.request('m2') }
+        Thread.sleep(100)
+        producer.interrupt()
+        producer.join(5000)
+        future.get(5, TimeUnit.SECONDS)
+
+        then: 'the future completes with DispatchingException'
+        def error = thrown(ExecutionException)
+        error.cause instanceof DispatchingException
 
         cleanup:
         registry.shutdown(true)

@@ -90,6 +90,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final AtomicBoolean queueTaskRunning = new AtomicBoolean();
     private final AtomicInteger pendingMessages = new AtomicInteger();
     private final AtomicLong rejectedMessages = new AtomicLong();
+    private volatile Thread dispatchThread;
     private final LinkedBlockingDeque<QueueEntry<?>> queue = new LinkedBlockingDeque<>();
 
     private volatile Map<Object, DependencyState> dependencies = Map.of();
@@ -326,7 +327,9 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             return;
         }
 
-        if (userMessage && isUserMessage(message) && config.getQueueCapacity() > 0 && queue.size() >= config.getQueueCapacity()) {
+        // a message sent by the object to itself is internal control flow, not external load:
+        // applying the policy to it would deadlock the dispatch thread under BLOCK
+        if (userMessage && !isSelfDispatch() && isUserMessage(message) && config.getQueueCapacity() > 0 && queue.size() >= config.getQueueCapacity()) {
             if (config.getQueueOverflowPolicy() == QueueOverflowPolicy.BLOCK) {
                 // soft limit: concurrent producers may overshoot the capacity by a few messages,
                 // but the queue can never grow unboundedly
@@ -335,7 +338,12 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                         Thread.sleep(1);
                     } catch (final InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        entry.fail(new DispatchingException("Interrupted while waiting for a queue slot: [" + message + "]"));
+                        final var interrupted = new DispatchingException("Interrupted while waiting for a queue slot: [" + message + "]");
+                        if (entry.future() != null) {
+                            entry.fail(interrupted);
+                        } else {
+                            throw interrupted;
+                        }
                         return;
                     }
                 }
@@ -781,6 +789,15 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         executor.execute(new QueueDispatchingTask());
     }
 
+    /**
+     * A message sent by the object to itself is internal control flow, not external load:
+     * applying the overflow policy to it would block the dispatch thread waiting for a slot
+     * that only it can free. Such messages bypass the policy.
+     */
+    private boolean isSelfDispatch() {
+        return Thread.currentThread() == dispatchThread;
+    }
+
     private void startDependency(final Start message, final DependencyState dependency, final Object dependencyId) {
         if (startGraph.reaches(dependencyId, id)) {
             throw new DependencyException("Cyclic start: " + id + " -> " + dependencyId);
@@ -878,6 +895,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final class QueueDispatchingTask implements Runnable {
         @Override
         public void run() {
+            dispatchThread = Thread.currentThread();
             try {
                 while (queueTaskRunning.get()) {
                     if (status == ActiveObjectStatus.DESTROYED) {
@@ -909,6 +927,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     }
                 }
             } finally {
+                dispatchThread = null;
                 queueTaskRunning.set(false);
                 if (!queue.isEmpty()) {
                     processNextMessages();

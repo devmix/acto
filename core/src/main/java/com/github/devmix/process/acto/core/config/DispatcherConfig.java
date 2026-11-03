@@ -79,7 +79,11 @@ public final class DispatcherConfig {
 
     /**
      * The maximum number of user messages waiting in the queue of each active object.
-     * {@code 0} means unlimited.
+     * {@code 0} or a negative value means unlimited.
+     *
+     * <p>The limit is soft: concurrent producers may overshoot it by a few messages because
+     * the size check and the insertion are not atomic. It bounds memory growth, not the
+     * exact queue size.</p>
      */
     @Builder.Default
     private final int queueCapacity = 0;
