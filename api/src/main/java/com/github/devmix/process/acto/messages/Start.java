@@ -100,14 +100,18 @@ public final class Start {
 
     /**
      * Creates a new Start instance based on an existing one, with the provided source and optionality flag.
+     * <p>
+     * The chain and the visited set are copied defensively: each active object processes the message
+     * in its own dispatch thread and mutates these collections via {@link #starting(ActiveObject)},
+     * so they must not be shared between objects.
      *
-     * @param source   the source active object from which to start processing
+     * @param source   the active object from which to start processing
      * @param origin   the original Start instance whose chain and visited objects will be copied
      * @param optional whether the start is optional or mandatory
      * @return a new Start instance based on the provided parameters
      */
     public static Start downstream(final ActiveObject<?> source, final Start origin, final boolean optional) {
-        return new Start(source, origin.chain, origin.visited, optional);
+        return new Start(source, new LinkedList<>(origin.chain), new HashSet<>(origin.visited), optional);
     }
 
     /**
