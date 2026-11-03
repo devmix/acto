@@ -45,6 +45,9 @@ public interface ActiveObjectContext<T> {
     /**
      * Adds a dependency on another active object with specified optional flag.
      *
+     * <p>SHOULD be called from message handlers (the dispatch thread of this context) to keep
+     * the dependency map consistent with the lifecycle processing.</p>
+     *
      * @param objectId The identifier of the active object to depend on
      * @param optional True if the dependency is optional, false otherwise
      * @return An {@link ActiveObjectDependency} representing this dependency

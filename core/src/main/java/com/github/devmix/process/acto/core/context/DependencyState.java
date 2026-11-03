@@ -58,19 +58,19 @@ final class DependencyState implements ActiveObjectDependency {
      */
     @Getter
     @Setter
-    private @Nullable String lastError;
+    private volatile @Nullable String lastError;
 
     /**
      * Indicates whether this dependency has been resolved.
      */
     @Getter
-    private boolean resolved;
+    private volatile boolean resolved;
 
     /**
      * The active object associated with this dependency, if it has been resolved.
      */
     @Getter
-    private @Nullable ActiveObject<?> object;
+    private volatile @Nullable ActiveObject<?> object;
 
     /**
      * Ensures that the associated active object is not null and returns it.

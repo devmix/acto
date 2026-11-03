@@ -43,17 +43,16 @@ import com.github.devmix.process.acto.messages.InvokeAndGet;
 import com.github.devmix.process.acto.messages.Start;
 import com.github.devmix.process.acto.messages.Stop;
 import lombok.Getter;
-import org.apache.commons.collections4.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.Serial;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -82,15 +81,15 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final AtomicInteger pendingMessages = new AtomicInteger();
     private final LinkedBlockingDeque<QueueEntry<?>> queue = new LinkedBlockingDeque<>();
 
-    private Map<Object, DependencyState> dependencies;
+    private final Map<Object, DependencyState> dependencies = new ConcurrentHashMap<>();
 
-    private @Getter T instance;
-    private @Getter ActiveObjectStatus status = ActiveObjectStatus.CREATING;
-    private long lastActivityTime;
+    private volatile @Getter T instance;
+    private volatile @Getter ActiveObjectStatus status = ActiveObjectStatus.CREATING;
+    private volatile long lastActivityTime;
 
-    private @Getter boolean idleAllowed;
-    private @Getter long idleTimeout;
-    private @Getter long waitMessagesTimeout;
+    private volatile @Getter boolean idleAllowed;
+    private volatile @Getter long idleTimeout;
+    private volatile @Getter long waitMessagesTimeout;
 
     public DefaultActiveObjectContext(final Object id, final Object options, @Nullable final T instance,
                                       final ActiveObjectLifecycle<T> lifecycle,
@@ -144,7 +143,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
 
     @Override
     public void forEachDependency(final Consumer<ActiveObjectDependency> action, @Nullable final ActiveObjectDependency.Type filterByType) {
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             for (final var state : dependencies.values()) {
                 if (filterByType == null || state.getType() == filterByType) {
                     action.accept(state);
@@ -272,15 +271,11 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 ", status=" + status +
                 ", queue=" + queue.size() +
                 ", running=" + queueTaskRunning.get() +
-                ", deps=" + (dependencies != null ? dependencies.size() : 0) +
+                ", deps=" + dependencies.size() +
                 '}';
     }
 
     private DependencyState addDependency(final Object objectId, final ActiveObjectDependency.Type type, final boolean optional) {
-        if (dependencies == null) {
-            dependencies = new HashMap<>();
-        }
-
         final var result = new DependencyState(type, optional);
 
         dependencies.put(objectId, result);
@@ -325,7 +320,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private void notifyStoppedDependsOnDependencies(final Stop message) {
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             for (final var entry : dependencies.entrySet()) {
                 final var dependency = entry.getValue();
                 if (dependency.isResolved() && dependency.getType() == ActiveObjectDependency.Type.DEPENDS_ON) {
@@ -452,7 +447,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 l.onObjectDestroy(this);
             }
 
-            if (MapUtils.isNotEmpty(dependencies)) {
+            if (!dependencies.isEmpty()) {
                 for (final var dependency : dependencies.values()) {
                     dependency.setObject(null);
                 }
@@ -591,7 +586,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
 
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             final var dependencyId = message.getSource().getId();
             final var dependency = dependencies.get(dependencyId);
             if (dependency != null) {
@@ -652,8 +647,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     // ignore
                     return null;
                 } else if (message instanceof Start) {
-                    // ignore
-                    return instance;
+                    // ignore: already started, return the active object itself
+                    return this;
                 } else if (message instanceof Idle.Activate) {
                     onActivate(Idle.activate());
                     return null;
@@ -679,8 +674,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     onDeactivate(Idle.deactivate());
                     return null;
                 } else if (message instanceof Start) {
-                    // ignore
-                    return instance;
+                    // ignore: already started, return the active object itself
+                    return this;
                 } else if (message instanceof Idle.Activate) {
                     // ignore
                     return null;
@@ -752,7 +747,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private void startDependsOnDependencies(final Start message) {
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             for (final var entry : dependencies.entrySet()) {
                 final var dependency = entry.getValue();
                 if (dependency.getType() == ActiveObjectDependency.Type.DEPENDS_ON) {
@@ -781,7 +776,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private void stopRequiredForDependencies(final Stop message) {
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             for (final var entry : new ArrayList<>(dependencies.entrySet())) {
                 final var dependency = entry.getValue();
                 if (dependency.isResolved() && dependency.getType() == ActiveObjectDependency.Type.REQUIRED_FOR) {
