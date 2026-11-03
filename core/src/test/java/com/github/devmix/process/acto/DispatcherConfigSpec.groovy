@@ -90,20 +90,21 @@ class DispatcherConfigSpec extends Specification {
     }
 
     def 'shutdown stops the heartbeat thread'() {
-        given:
+        given: 'heartbeat threads that were already alive before the test'
+        def before = liveHeartbeatThreads()
         def registry = new DefaultActiveObjectsDispatcher()
 
-        expect: 'the heartbeat thread is alive'
+        expect: 'the registry creates its own heartbeat thread'
         new PollingConditions(timeout: 2).eventually {
-            assert Thread.getAllStackTraces().keySet().any { it.name == 'acto-heartbeat' && it.alive }
+            assert (liveHeartbeatThreads() - before)
         }
 
         when:
         registry.shutdown(true)
 
-        then: 'the heartbeat thread terminates'
-        new PollingConditions(timeout: 2).eventually {
-            assert Thread.getAllStackTraces().keySet().every { it.name != 'acto-heartbeat' || !it.alive }
+        then: 'the heartbeat thread of this registry terminates'
+        new PollingConditions(timeout: 5).eventually {
+            assert !(liveHeartbeatThreads() - before)
         }
     }
 
@@ -122,6 +123,10 @@ class DispatcherConfigSpec extends Specification {
     // ------------------------------------------------------------------------
     // fixtures
     // ------------------------------------------------------------------------
+
+    private static Set<Thread> liveHeartbeatThreads() {
+        Thread.getAllStackTraces().keySet().findAll { it.name == 'acto-heartbeat' && it.alive } as Set
+    }
 
     static class IdleObject implements OnMessageListener<IdleObject>, OnIdleListener<IdleObject> {
         final AtomicBoolean deactivated = new AtomicBoolean(false)
