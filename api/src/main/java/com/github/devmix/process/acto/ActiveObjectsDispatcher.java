@@ -142,7 +142,11 @@ public interface ActiveObjectsDispatcher {
      * is reported by {@code false} and the object stays in the registry.</p>
      *
      * @param objectId The unique identifier of the active object to be destroyed.
-     * @param force    Indicates whether to forcefully destroy the active object (true) or not (false).
+     * @param force    {@code false} (graceful): the object processes every message accepted before
+     *                 the destroy request and only then is destroyed — no accepted work is lost;
+     *                 {@code true} (forced): messages still in the queue are discarded immediately,
+     *                 their futures complete exceptionally with {@code DispatchingException}.
+     *                 Messages sent to the object after the destroy request always fail fast.
      * @return True if the active object was successfully destroyed and removed from the registry;
      *         otherwise, false (unknown id, destruction failed or timed out).
      */
