@@ -214,50 +214,50 @@ Output:
 // ----------------------------------------------------------------------------
 
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-	id:n:1, status:CREATING]
+    id:n:1, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-	id:n:1, status:CREATED, dependencies:
-		n:2 - type:DEPENDS_ON, resolved:false, optional:false
+    id:n:1, status:CREATED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:false, optional:false
 ]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-	id:n:2, status:CREATING]
+    id:n:2, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-	id:n:2, status:CREATED, dependencies:
-		n:3 - type:DEPENDS_ON, resolved:false, optional:false
+    id:n:2, status:CREATED, dependencies:
+        n:3 - type:DEPENDS_ON, resolved:false, optional:false
 ]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-	id:n:3, status:CREATING]
+    id:n:3, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-	id:n:3, status:CREATED, dependencies:
-		n:5 - type:DEPENDS_ON, resolved:false, optional:false
-		n:4 - type:DEPENDS_ON, resolved:false, optional:false
-		n:6 - type:DEPENDS_ON, resolved:false, optional:true
+    id:n:3, status:CREATED, dependencies:
+        n:5 - type:DEPENDS_ON, resolved:false, optional:false
+        n:4 - type:DEPENDS_ON, resolved:false, optional:false
+        n:6 - type:DEPENDS_ON, resolved:false, optional:true
 ]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-	id:n:4, status:CREATING]
+    id:n:4, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-	id:n:4, status:CREATED]
+    id:n:4, status:CREATED]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-	id:n:5, status:CREATING]
+    id:n:5, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-	id:n:5, status:CREATED]
+    id:n:5, status:CREATED]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-	id:n:6, status:CREATING]
+    id:n:6, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-	id:n:6, status:CREATED]
+    id:n:6, status:CREATED]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-	id:fs:1, status:CREATING]
+    id:fs:1, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-	id:fs:1, status:CREATED]
+    id:fs:1, status:CREATED]
 
 // ----------------------------------------------------------------------------
 // o7.get(SomeFileSystemObject::getFilesList).thenAccept(System.out::println);
 // ----------------------------------------------------------------------------
 
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[] [
-	id:fs:1, status:CREATED]
+    id:fs:1, status:CREATED]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[fs:1] [
-	id:fs:1, status:STARTED]
+    id:fs:1, status:STARTED]
 
 file 1
 ...
@@ -268,52 +268,52 @@ file N
 // ----------------------------------------------------------------------------
 
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[] [
-	id:n:1, status:CREATED, dependencies:
-		n:2 - type:DEPENDS_ON, resolved:false, optional:false
+    id:n:1, status:CREATED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:false, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1] [
-	id:n:2, status:CREATED, dependencies:
-		n:3 - type:DEPENDS_ON, resolved:false, optional:false
+    id:n:2, status:CREATED, dependencies:
+        n:3 - type:DEPENDS_ON, resolved:false, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2] [
-	id:n:3, status:CREATED, dependencies:
-		n:5 - type:DEPENDS_ON, resolved:false, optional:false
-		n:4 - type:DEPENDS_ON, resolved:false, optional:false
-		n:6 - type:DEPENDS_ON, resolved:false, optional:true
+    id:n:3, status:CREATED, dependencies:
+        n:5 - type:DEPENDS_ON, resolved:false, optional:false
+        n:4 - type:DEPENDS_ON, resolved:false, optional:false
+        n:6 - type:DEPENDS_ON, resolved:false, optional:true
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3] [
-	id:n:4, status:CREATED]
+    id:n:4, status:CREATED]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:4] [
-	id:n:4, status:STARTED, dependencies:
-		n:3 - type:REQUIRED_FOR, resolved:true, optional:false
+    id:n:4, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3] [
-	id:n:5, status:CREATED]
+    id:n:5, status:CREATED]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:5] [
-	id:n:5, status:STARTED, dependencies:
-		n:3 - type:REQUIRED_FOR, resolved:true, optional:false
+    id:n:5, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3] [
-	id:n:6, status:CREATED]
+    id:n:6, status:CREATED]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:6] [
-	id:n:6, status:STARTED, dependencies:
-		n:3 - type:REQUIRED_FOR, resolved:true, optional:true
+    id:n:6, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:true
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3] [
-	id:n:3, status:STARTED, dependencies:
-		n:2 - type:REQUIRED_FOR, resolved:true, optional:false
-		n:5 - type:DEPENDS_ON, resolved:true, optional:false
-		n:4 - type:DEPENDS_ON, resolved:true, optional:false
-		n:6 - type:DEPENDS_ON, resolved:true, optional:true
+    id:n:3, status:STARTED, dependencies:
+        n:2 - type:REQUIRED_FOR, resolved:true, optional:false
+        n:5 - type:DEPENDS_ON, resolved:true, optional:false
+        n:4 - type:DEPENDS_ON, resolved:true, optional:false
+        n:6 - type:DEPENDS_ON, resolved:true, optional:true
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2] [
-	id:n:2, status:STARTED, dependencies:
-		n:1 - type:REQUIRED_FOR, resolved:true, optional:false
-		n:3 - type:DEPENDS_ON, resolved:true, optional:false
+    id:n:2, status:STARTED, dependencies:
+        n:1 - type:REQUIRED_FOR, resolved:true, optional:false
+        n:3 - type:DEPENDS_ON, resolved:true, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1] [
-	id:n:1, status:STARTED, dependencies:
-		n:2 - type:DEPENDS_ON, resolved:true, optional:false
+    id:n:1, status:STARTED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:true, optional:false
 ]
 
 WORLD 1
@@ -323,53 +323,53 @@ WORLD 1
 // ----------------------------------------------------------------------------
 
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[] [
-	id:n:5, status:STARTED, dependencies:
-		n:3 - type:REQUIRED_FOR, resolved:true, optional:false
+    id:n:5, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5] [
-	id:n:3, status:STARTED, dependencies:
-		n:2 - type:REQUIRED_FOR, resolved:true, optional:false
-		n:5 - type:DEPENDS_ON, resolved:true, optional:false
-		n:4 - type:DEPENDS_ON, resolved:true, optional:false
-		n:6 - type:DEPENDS_ON, resolved:true, optional:true
+    id:n:3, status:STARTED, dependencies:
+        n:2 - type:REQUIRED_FOR, resolved:true, optional:false
+        n:5 - type:DEPENDS_ON, resolved:true, optional:false
+        n:4 - type:DEPENDS_ON, resolved:true, optional:false
+        n:6 - type:DEPENDS_ON, resolved:true, optional:true
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5 > n:3] [
-	id:n:2, status:STARTED, dependencies:
-		n:1 - type:REQUIRED_FOR, resolved:true, optional:false
-		n:3 - type:DEPENDS_ON, resolved:true, optional:false
+    id:n:2, status:STARTED, dependencies:
+        n:1 - type:REQUIRED_FOR, resolved:true, optional:false
+        n:3 - type:DEPENDS_ON, resolved:true, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5 > n:3 > n:2] [
-	id:n:1, status:STARTED, dependencies:
-		n:2 - type:DEPENDS_ON, resolved:true, optional:false
+    id:n:1, status:STARTED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:true, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3 > n:2 > n:1] [
-	id:n:1, status:STOPPED, dependencies:
-		n:2 - type:DEPENDS_ON, resolved:false, optional:false
+    id:n:1, status:STOPPED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:false, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3 > n:2] [
-	id:n:2, status:STOPPED, dependencies:
-		n:3 - type:DEPENDS_ON, resolved:false, optional:false
+    id:n:2, status:STOPPED, dependencies:
+        n:3 - type:DEPENDS_ON, resolved:false, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - REMOVE UPSTREAM DEP ⟶ ⟶ ID:n:3 [
-	id:n:4, status:STARTED, dependencies:
-		n:3 - type:REQUIRED_FOR, resolved:true, optional:false
+    id:n:4, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:false
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3] [
-	id:n:3, status:STOPPED, dependencies:
-		n:5 - type:DEPENDS_ON, resolved:false, optional:false
-		n:4 - type:DEPENDS_ON, resolved:true, optional:false
-		n:6 - type:DEPENDS_ON, resolved:true, optional:true
+    id:n:3, status:STOPPED, dependencies:
+        n:5 - type:DEPENDS_ON, resolved:false, optional:false
+        n:4 - type:DEPENDS_ON, resolved:true, optional:false
+        n:6 - type:DEPENDS_ON, resolved:true, optional:true
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - REMOVE UPSTREAM DEP ⟶ ⟶ ID:n:3 [
-	id:n:6, status:STARTED, dependencies:
-		n:3 - type:REQUIRED_FOR, resolved:true, optional:true
+    id:n:6, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:true
 ]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5] [
-	id:n:5, status:STOPPED]
+    id:n:5, status:STOPPED]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ REMOVED UPSTREAM DEP ID:n:3 [
-	id:n:6, status:STARTED]
+    id:n:6, status:STARTED]
 [] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ REMOVED UPSTREAM DEP ID:n:3 [
-	id:n:4, status:STARTED]
+    id:n:4, status:STARTED]
 
 // ----------------------------------------------------------------------------
 // o6.get(NodeObject::getCounter).thenAccept(response -> { System.out.println(response); });
