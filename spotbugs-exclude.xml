@@ -26,6 +26,14 @@
         <Bug pattern="EI_EXPOSE_REP2"/>
     </Match>
 
+    <!-- MicrometerDispatcherMetrics must hold the application's MeterRegistry by reference:
+         registering meters into a copy would be pointless. Sharing the registry is the
+         entire point of the class. -->
+    <Match>
+        <Class name="com.github.devmix.process.acto.core.metrics.MicrometerDispatcherMetrics"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
     <!-- DEBUGGING_INFO is a deprecated but still functional global switch kept for 0.1.x
          compatibility; it is scheduled for removal and must stay mutable until then. -->
     <Match>
