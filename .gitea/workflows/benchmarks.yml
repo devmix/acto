@@ -1,0 +1,49 @@
+name: benchmarks
+
+on:
+  workflow_dispatch:
+
+env:
+  # bump manually when a new Temurin 21 build ships
+  JDK_VERSION: 21.0.13+9
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JDK
+        id: jdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/jdk
+          key: jdk-temurin-${{ env.JDK_VERSION }}-linux-x64
+
+      - name: Download JDK
+        if: steps.jdk-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cache/jdk
+          curl -fsSL -o ~/.cache/jdk/jdk.tar.gz \
+            "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-${JDK_VERSION/\+/%2B}/OpenJDK21U-jdk_x64_linux_hotspot_${JDK_VERSION//+/_}.tar.gz"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          jdkFile: /home/runner/.cache/jdk/jdk.tar.gz
+
+      - name: Build benchmarks
+        run: ./mvnw -ntp -Pbenchmarks -pl api,core,benchmarks clean verify
+
+      - name: Smoke test the jar
+        run: java -jar benchmarks/target/benchmarks.jar -l > /dev/null
+
+      - name: Run benchmarks
+        timeout-minutes: 30
+        run: java -jar benchmarks/target/benchmarks.jar -rf json -rff baseline.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: baseline.json
