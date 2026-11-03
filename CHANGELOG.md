@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-03
+
 ### Added
 
 - Backpressure: `DispatcherConfig.queueCapacity` bounds the queued user messages per object,
@@ -26,19 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DispatcherConfig.builder().build()` validates its parameters: timeouts must be positive
   (`messageTimeout` may be `ZERO` to disable the deadline), with a warning when
   `idleTimeout` is shorter than `heartbeatInterval`
-
-### Changed
-
-- CI caches the Temurin JDK archive and provisions it without `setup-java` (the archive is
-  extracted locally; `setup-java@v5` removed local-file installation upstream)
-- CI runs SpotBugs + findsecbugs, ErrorProne and a JaCoCo line-coverage gate on `core`
-- `catch (Exception)` around dependency start/stop narrowed to the concrete exceptions
-  (`Error`s are no longer swallowed, the interrupt flag is restored)
-
-## [0.2.0] - 2026-11-03
-
-### Added
-
+- JPMS module descriptors (`devmix.process.acto.api`, `devmix.process.acto.core`) and a japicmp
+  binary-compatibility gate in CI
+- `CONTRIBUTING.md`
 - `DispatcherConfig` as the single configuration entry point: `heartbeatInterval`, `idleTimeout`,
   `waitMessagesTimeout`, `destroyTimeout`, `dependencyStartTimeout`, `dependencyStopTimeout`,
   `debugLifecycleLogging`
@@ -50,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- CI caches the Temurin JDK archive and provisions it without `setup-java` (the archive is
+  extracted locally; `setup-java@v5` removed local-file installation upstream)
+- CI runs SpotBugs + findsecbugs, ErrorProne and a JaCoCo line-coverage gate on `core`
+- `catch (Exception)` around dependency start/stop narrowed to the concrete exceptions
+  (`Error`s are no longer swallowed, the interrupt flag is restored)
+- `slf4j-simple` is a test-scoped dependency of `core` and no longer leaks to consumers
 - **Breaking** `destroy(id, false)` is now graceful: the object processes every message accepted
   before the destroy request and only then is destroyed. In 0.1.x destroy jumped the queue
   immediately, so accepted work could be lost
