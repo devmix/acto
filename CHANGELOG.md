@@ -16,10 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   messages are skipped instead of being executed for a caller that has given up
 - `examples` module: 33 runnable, tested use cases grouped by domain, each rated for how well it
   fits the active object pattern
+- Observability: `DispatcherMetrics` hooks (processed/rejected messages, queue depth, destroyed
+  objects) with a zero-overhead no-op default and an optional `MicrometerDispatcherMetrics`
+  backend (`micrometer-core` is an optional dependency)
+- `benchmarks` module (JMH, profile `-Pbenchmarks`, not part of the default build) with a
+  committed baseline under `docs/benchmarks/`
+- Dispatch threads are named: the dispatch loop runs on a virtual thread named
+  `acto-dispatch-<objectId>`, so logs and thread dumps identify the owning object
+- `DispatcherConfig.builder().build()` validates its parameters: timeouts must be positive
+  (`messageTimeout` may be `ZERO` to disable the deadline), with a warning when
+  `idleTimeout` is shorter than `heartbeatInterval`
 
 ### Changed
 
-- CI caches the Temurin JDK archive and uses `actions/setup-java@v5`
+- CI caches the Temurin JDK archive and provisions it without `setup-java` (the archive is
+  extracted locally; `setup-java@v5` removed local-file installation upstream)
+- CI runs SpotBugs + findsecbugs, ErrorProne and a JaCoCo line-coverage gate on `core`
+- `catch (Exception)` around dependency start/stop narrowed to the concrete exceptions
+  (`Error`s are no longer swallowed, the interrupt flag is restored)
 
 ## [0.2.0] - 2026-11-03
 
