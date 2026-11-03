@@ -42,7 +42,10 @@ public enum QueueOverflowPolicy {
 
     /**
      * Block the producing thread until the object drains a slot from the queue —
-     * natural backpressure from the consumer speed.
+     * natural backpressure from the consumer speed. The wait is interruptible but has no
+     * timeout: a stuck message handler blocks producers indefinitely. Messages an object
+     * sends to itself bypass the policy, so the dispatch thread can never wait on its own
+     * queue.
      */
     BLOCK
 }
