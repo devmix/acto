@@ -55,6 +55,11 @@ ActiveObject<EchoObject> obj = dispatcher
 Long counter = obj.get(EchoObject::getCounter).get();
 ```
 
+## Use Cases
+
+Six runnable, tested patterns — ledger, ETL pipeline, resource holder, rate limiter, event bridge,
+write-through cache — see [examples/README.md](examples/README.md).
+
 ## Object Lifecycle
 
 ![0001-active-object-lifecycle.svg](docs/dev/assets/0001-active-object-lifecycle.svg)
