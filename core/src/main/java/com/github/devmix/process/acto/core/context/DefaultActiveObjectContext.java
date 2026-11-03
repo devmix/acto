@@ -920,6 +920,9 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final class QueueDispatchingTask implements Runnable {
         @Override
         public void run() {
+            // name the carrier-visible virtual thread after the object it serves,
+            // so logs and thread dumps show which object owns the dispatch loop
+            Thread.currentThread().setName("acto-dispatch-" + id);
             dispatchThread = Thread.currentThread();
             try {
                 while (queueTaskRunning.get()) {
