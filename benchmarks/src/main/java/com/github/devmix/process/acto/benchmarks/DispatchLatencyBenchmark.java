@@ -86,7 +86,7 @@ public class DispatchLatencyBenchmark {
 
     @Benchmark
     @BenchmarkMode(Mode.Throughput)
-    public void requestFireAndForget(final Blackhole blackhole) {
+    public void requestWithoutAwait(final Blackhole blackhole) {
         final CompletableFuture<Object> future = object.request("m");
         blackhole.consume(future.isDone());
     }

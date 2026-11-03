@@ -25,6 +25,7 @@
         <groupId>com.github.devmix.process.acto</groupId>
         <artifactId>project</artifactId>
         <version>0.2.0</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>devmix-process-acto-benchmarks</artifactId>

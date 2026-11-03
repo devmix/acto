@@ -14,6 +14,9 @@ Commit a new `baseline-<date>.json` + table here when behavior changes materiall
 
 Environment: JDK 21.0.6-graal, Linux x86_64, 16 cores, JMH 1.37, single thread.
 
+> Note: this baseline was produced with GraalVM 21.0.6 (the local JDK), while the CI
+> workflow runs Temurin 21 — CI numbers are comparable in trend, not bit-for-bit.
+
 | Benchmark | Mode | Score | Error | Unit |
 |-----------|------|-------|-------|------|
 | `requestAndForget` | thrpt | 1.631 | ±0.661 | ops/µs |
