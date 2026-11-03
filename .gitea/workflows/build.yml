@@ -53,7 +53,7 @@ jobs:
 
       - name: JPMS smoke test
         run: |
-          ./mvnw -B -ntp -q dependency:build-classpath -pl core -am -DincludeScope=compile -Dmdep.outputFile="$RUNNER_TEMP/cp.txt"
+          ./mvnw -B -ntp -q compile dependency:build-classpath -pl core -am -DincludeScope=compile -Dmdep.outputFile="$RUNNER_TEMP/cp.txt"
           MP="api/target/classes:core/target/classes:$(cat "$RUNNER_TEMP/cp.txt")"
           javac --module-path "$MP" --add-modules devmix.process.acto.core -d "$RUNNER_TEMP/smoke" smoke/ModuleSmoke.java
           java --module-path "$MP" -cp "$RUNNER_TEMP/smoke" --add-modules devmix.process.acto.core ModuleSmoke
