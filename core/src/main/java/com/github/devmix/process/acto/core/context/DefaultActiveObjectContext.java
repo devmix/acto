@@ -25,10 +25,12 @@ import com.github.devmix.process.acto.ActiveObjectLifecycle;
 import com.github.devmix.process.acto.ActiveObjectStatus;
 import com.github.devmix.process.acto.ActiveObjectsDispatcher;
 import com.github.devmix.process.acto.core.config.DispatcherConfig;
+import com.github.devmix.process.acto.core.config.QueueOverflowPolicy;
 import com.github.devmix.process.acto.core.utils.ObjectInfoUtils;
 import com.github.devmix.process.acto.exceptions.DependencyException;
 import com.github.devmix.process.acto.exceptions.DispatchingException;
 import com.github.devmix.process.acto.exceptions.ObjectStopException;
+import com.github.devmix.process.acto.exceptions.QueueOverflowException;
 import com.github.devmix.process.acto.exceptions.RegistryException;
 import com.github.devmix.process.acto.listeners.OnCreateListener;
 import com.github.devmix.process.acto.listeners.OnDestroyListener;
@@ -60,6 +62,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -86,6 +89,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final StartGraph startGraph;
     private final AtomicBoolean queueTaskRunning = new AtomicBoolean();
     private final AtomicInteger pendingMessages = new AtomicInteger();
+    private final AtomicLong rejectedMessages = new AtomicLong();
+    private volatile Thread dispatchThread;
     private final LinkedBlockingDeque<QueueEntry<?>> queue = new LinkedBlockingDeque<>();
 
     private volatile Map<Object, DependencyState> dependencies = Map.of();
@@ -167,7 +172,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (action == null) {
             throw new DispatchingException("Getter function cannot be null");
         }
-        return this.dispatch(action);
+        return this.dispatch(action, true);
     }
 
     @Override
@@ -193,7 +198,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     @Override
     public <R> CompletableFuture<R> redirectRequest(final Object objectId, final Object message) throws RegistryException {
         if (id.equals(objectId)) {
-            return dispatch(message);
+            return dispatch(message, true);
         }
 
         final var recipient = dispatcher.getById(objectId);
@@ -204,7 +209,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     @Override
     public void redirectRequestAndForget(final Object objectId, final Object message) throws RegistryException {
         if (id.equals(objectId)) {
-            dispatchNoResponse(message);
+            dispatchNoResponse(message, true);
         } else {
             dispatcher.getById(objectId).requestAndForget(message);
         }
@@ -215,7 +220,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (message == null) {
             throw new DispatchingException("Message cannot be null");
         }
-        return dispatch(message);
+        return dispatch(message, true);
     }
 
     @Override
@@ -223,7 +228,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (invoke == null) {
             throw new DispatchingException("invoke cannot be null");
         }
-        return dispatch(invoke);
+        return dispatch(invoke, true);
     }
 
     @Override
@@ -231,7 +236,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (invoke == null) {
             throw new DispatchingException("invoke cannot be null");
         }
-        addToQueue(new QueueEntry<>(invoke, null));
+        addToQueue(new QueueEntry<>(invoke, null), true);
     }
 
     @Override
@@ -239,7 +244,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (message == null) {
             throw new DispatchingException("Message cannot be null");
         }
-        addToQueue(new QueueEntry<>(message, null));
+        addToQueue(new QueueEntry<>(message, null), true);
     }
 
     @Override
@@ -247,7 +252,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (action == null) {
             throw new DispatchingException("Setter action cannot be null");
         }
-        return dispatch(InternalSetAttribute.create(action, value));
+        return dispatch(InternalSetAttribute.create(action, value), true);
     }
 
     @Override
@@ -255,7 +260,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (action == null) {
             throw new DispatchingException("Setter action cannot be null");
         }
-        dispatchNoResponse(InternalSetAttribute.create(action, value));
+        dispatchNoResponse(InternalSetAttribute.create(action, value), true);
     }
 
     public void setIdleTimeout(final long idleTimeout) {
@@ -272,6 +277,11 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     @Override
     public void setWaitMessagesTimeout(final long waitMessagesTimeout) {
         this.waitMessagesTimeout = waitMessagesTimeout == -1 ? config.getWaitMessagesTimeout().toMillis() : waitMessagesTimeout;
+    }
+
+    @Override
+    public long getRejectedMessages() {
+        return rejectedMessages.get();
     }
 
     @Override
@@ -307,10 +317,47 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private <R> void addToQueue(final QueueEntry<R> entry) {
+        addToQueue(entry, false);
+    }
+
+    private <R> void addToQueue(final QueueEntry<R> entry, final boolean userMessage) {
         final var message = entry.message();
         if (status == ActiveObjectStatus.DESTROYED && !(message instanceof InternalDestroy)) {
             entry.fail(new DispatchingException("Cannot dispatch message [" + message + "]: object [" + id + "] is destroyed"));
             return;
+        }
+
+        // a message sent by the object to itself is internal control flow, not external load:
+        // applying the policy to it would deadlock the dispatch thread under BLOCK
+        if (userMessage && !isSelfDispatch() && isUserMessage(message) && config.getQueueCapacity() > 0 && queue.size() >= config.getQueueCapacity()) {
+            if (config.getQueueOverflowPolicy() == QueueOverflowPolicy.BLOCK) {
+                // soft limit: concurrent producers may overshoot the capacity by a few messages,
+                // but the queue can never grow unboundedly
+                while (queue.size() >= config.getQueueCapacity()) {
+                    try {
+                        Thread.sleep(1);
+                    } catch (final InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        final var interrupted = new DispatchingException("Interrupted while waiting for a queue slot: [" + message + "]");
+                        if (entry.future() != null) {
+                            entry.fail(interrupted);
+                        } else {
+                            throw interrupted;
+                        }
+                        return;
+                    }
+                }
+            } else {
+                rejectedMessages.incrementAndGet();
+                final var overflow = new QueueOverflowException(
+                        "Queue of object [" + id + "] is full: capacity [" + config.getQueueCapacity() + "], message [" + message + "] rejected");
+                if (entry.future() != null) {
+                    entry.fail(overflow);
+                } else {
+                    throw overflow;
+                }
+                return;
+            }
         }
 
         pendingMessages.incrementAndGet();
@@ -330,14 +377,36 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         processNextMessages();
     }
 
+    /**
+     * Lifecycle and system messages are never subject to the queue overflow policy: a full
+     * queue must not prevent an object from being started, stopped or destroyed.
+     */
+    private static boolean isUserMessage(final Object message) {
+        return !(message instanceof InternalDestroy)
+                && !(message instanceof InternalHeartbeat)
+                && !(message instanceof InternalUpstreamDependencyStopped)
+                && !(message instanceof Start)
+                && !(message instanceof Stop)
+                && !(message instanceof Idle.Activate)
+                && !(message instanceof Idle.Deactivate);
+    }
+
     private <R> CompletableFuture<R> dispatch(final Object message) {
+        return dispatch(message, false);
+    }
+
+    private <R> CompletableFuture<R> dispatch(final Object message, final boolean userMessage) {
         final var dispatcherMessage = new QueueEntry<>(message, new CompletableFuture<R>());
-        addToQueue(dispatcherMessage);
+        addToQueue(dispatcherMessage, userMessage);
         return dispatcherMessage.future();
     }
 
     private void dispatchNoResponse(final Object message) {
-        addToQueue(new QueueEntry<>(message, null));
+        dispatchNoResponse(message, false);
+    }
+
+    private void dispatchNoResponse(final Object message, final boolean userMessage) {
+        addToQueue(new QueueEntry<>(message, null), userMessage);
     }
 
     private void notifyDependency(final Object message, final DependencyState dependency, final Object dependencyId) {
@@ -720,6 +789,15 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         executor.execute(new QueueDispatchingTask());
     }
 
+    /**
+     * A message sent by the object to itself is internal control flow, not external load:
+     * applying the overflow policy to it would block the dispatch thread waiting for a slot
+     * that only it can free. Such messages bypass the policy.
+     */
+    private boolean isSelfDispatch() {
+        return Thread.currentThread() == dispatchThread;
+    }
+
     private void startDependency(final Start message, final DependencyState dependency, final Object dependencyId) {
         if (startGraph.reaches(dependencyId, id)) {
             throw new DependencyException("Cyclic start: " + id + " -> " + dependencyId);
@@ -817,6 +895,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final class QueueDispatchingTask implements Runnable {
         @Override
         public void run() {
+            dispatchThread = Thread.currentThread();
             try {
                 while (queueTaskRunning.get()) {
                     if (status == ActiveObjectStatus.DESTROYED) {
@@ -848,6 +927,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     }
                 }
             } finally {
+                dispatchThread = null;
                 queueTaskRunning.set(false);
                 if (!queue.isEmpty()) {
                     processNextMessages();

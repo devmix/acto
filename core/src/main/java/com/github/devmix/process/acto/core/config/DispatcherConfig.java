@@ -78,6 +78,23 @@ public final class DispatcherConfig {
     private final boolean debugLifecycleLogging = false;
 
     /**
+     * The maximum number of user messages waiting in the queue of each active object.
+     * {@code 0} or a negative value means unlimited.
+     *
+     * <p>The limit is soft: concurrent producers may overshoot it by a few messages because
+     * the size check and the insertion are not atomic. It bounds memory growth, not the
+     * exact queue size.</p>
+     */
+    @Builder.Default
+    private final int queueCapacity = 0;
+
+    /**
+     * The behavior when a user message arrives while the object queue is full.
+     */
+    @Builder.Default
+    private final QueueOverflowPolicy queueOverflowPolicy = QueueOverflowPolicy.FAIL;
+
+    /**
      * Returns a configuration with all default values.
      *
      * @return the standard configuration

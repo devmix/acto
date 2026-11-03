@@ -19,6 +19,7 @@
 package com.github.devmix.process.acto
 
 import com.github.devmix.process.acto.core.config.DispatcherConfig
+import com.github.devmix.process.acto.core.config.QueueOverflowPolicy
 import com.github.devmix.process.acto.core.registry.DefaultActiveObjectsDispatcher
 import com.github.devmix.process.acto.listeners.OnIdleListener
 import com.github.devmix.process.acto.listeners.OnMessageListener
@@ -46,6 +47,8 @@ class DispatcherConfigSpec extends Specification {
         config.dependencyStartTimeout == Duration.ofSeconds(15)
         config.dependencyStopTimeout == Duration.ofSeconds(15)
         !config.debugLifecycleLogging
+        config.queueCapacity == 0
+        config.queueOverflowPolicy == QueueOverflowPolicy.FAIL
     }
 
     def 'context inherits timeouts from config'() {
