@@ -79,15 +79,19 @@ public interface ActiveObjectsDispatcher {
      * that can be returned by this method is 106751 days.
      *
      * @return Idle timeout in nanoseconds.
+     * @deprecated the default timeouts are provided by the dispatcher configuration now
      */
+    @Deprecated
     long getIdleTimeout();
 
     /**
-     * Returns the wait messages timeout for an active object in nanoseconds.
+     * Returns the wait messages timeout for an active object in milliseconds.
      * This is the time the system waits for messages to be processed by an active object.
      *
-     * @return Wait messages timeout in nanoseconds.
+     * @return Wait messages timeout in milliseconds.
+     * @deprecated the default timeouts are provided by the dispatcher configuration now
      */
+    @Deprecated
     long getWaitMessagesTimeout();
 
     /**
