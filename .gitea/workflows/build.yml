@@ -33,7 +33,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          jdkFile: /home/runner/.cache/jdk/jdk.tar.gz
+          jdk-file: /home/runner/.cache/jdk/jdk.tar.gz
 
       - name: Cache Maven repository
         uses: actions/cache@v4
