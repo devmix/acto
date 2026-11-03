@@ -55,6 +55,12 @@ ActiveObject<EchoObject> obj = dispatcher
 Long counter = obj.get(EchoObject::getCounter).get();
 ```
 
+## Use Cases
+
+A catalog of runnable, tested patterns by domain — ERP/ECM, fintech/HFT, logistics, EdTech,
+MarTech, MedTech, observability, ETL, BI and more, each rated for how well it fits the
+active object pattern — see [examples/README.md](examples/README.md).
+
 ## Object Lifecycle
 
 ![0001-active-object-lifecycle.svg](docs/dev/assets/0001-active-object-lifecycle.svg)
