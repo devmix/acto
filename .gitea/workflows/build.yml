@@ -8,6 +8,8 @@ on:
 env:
   # bump manually when a new Temurin 21 build ships
   JDK_VERSION: 21.0.13+9
+  # last released version, used as the japicmp binary-compatibility baseline
+  JAPICMP_BASELINE: 0.2.0
 
 jobs:
   build:
@@ -48,6 +50,21 @@ jobs:
 
       - name: Verify (unit tests)
         run: ./mvnw -B -ntp verify
+
+      - name: JPMS smoke test
+        run: |
+          SLF4J=$(find ~/.m2/repository/org/slf4j/slf4j-api -name 'slf4j-api-*.jar' ! -name '*sources*' | sort | tail -1)
+          CC=$(find ~/.m2/repository -path '*commons-collections4*' -name 'commons-collections4-*.jar' ! -name '*sources*' | sort | tail -1)
+          MP="api/target/classes:core/target/classes:$SLF4J:$CC"
+          javac --module-path "$MP" --add-modules devmix.process.acto.core -d "$RUNNER_TEMP/smoke" smoke/ModuleSmoke.java
+          java --module-path "$MP" -cp "$RUNNER_TEMP/smoke" --add-modules devmix.process.acto.core ModuleSmoke
+
+      - name: API compatibility (japicmp)
+        run: |
+          git fetch --no-tags --depth 1 origin "refs/tags/v${JAPICMP_BASELINE}:refs/tags/v${JAPICMP_BASELINE}"
+          git worktree add "$RUNNER_TEMP/baseline" "v${JAPICMP_BASELINE}"
+          ./mvnw -B -ntp -q -f "$RUNNER_TEMP/baseline/pom.xml" install -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -pl api,core -am
+          ./mvnw -B -ntp -Pjapicmp verify -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -pl api,core
 
       - name: Stress tests
         if: success()
