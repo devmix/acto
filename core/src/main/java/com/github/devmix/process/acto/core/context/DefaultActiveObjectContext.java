@@ -307,10 +307,15 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private <R> void addToQueue(final QueueEntry<R> entry) {
-        pendingMessages.incrementAndGet();
         final var message = entry.message();
+        if (status == ActiveObjectStatus.DESTROYED && !(message instanceof InternalDestroy)) {
+            entry.fail(new DispatchingException("Cannot dispatch message [" + message + "]: object [" + id + "] is destroyed"));
+            return;
+        }
+
+        pendingMessages.incrementAndGet();
         if ((message instanceof Stop stop && stop.isForce())
-                || message instanceof InternalDestroy) {
+                || (message instanceof InternalDestroy destroy && destroy.isForce())) {
 
             // priority insertion into the head of the queue: the running dispatch task
             // (if any) will process it right after the current message.
@@ -318,6 +323,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             // interrupt exec()) and would break the single-consumer invariant.
             queue.offerFirst(entry);
         } else {
+            // a graceful InternalDestroy goes to the tail: everything accepted before the
+            // destroy request is processed first, so no accepted work is lost
             queue.offerLast(entry);
         }
         processNextMessages();
@@ -794,11 +801,28 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         }
     }
 
+    private void drainQueueAfterDestroy() {
+        var drained = 0;
+        QueueEntry<?> entry;
+        while ((entry = queue.poll()) != null) {
+            entry.fail(new DispatchingException("Cannot dispatch message [" + entry.message() + "]: object [" + id + "] is destroyed"));
+            pendingMessages.decrementAndGet();
+            drained++;
+        }
+        if (drained > 0) {
+            LOG.debug("Drained {} queued message(s) of destroyed object [{}]", drained, id);
+        }
+    }
+
     private final class QueueDispatchingTask implements Runnable {
         @Override
         public void run() {
             try {
                 while (queueTaskRunning.get()) {
+                    if (status == ActiveObjectStatus.DESTROYED) {
+                        drainQueueAfterDestroy();
+                        break;
+                    }
                     var msg = queue.poll();
                     if (msg == null) {
                         if (waitMessagesTimeout > 0) {

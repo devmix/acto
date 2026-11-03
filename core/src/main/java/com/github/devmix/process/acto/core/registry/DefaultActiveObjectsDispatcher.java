@@ -228,7 +228,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
         }
 
         try {
-            final var success = context.request(InternalDestroy.instance())
+            final var success = context.request(force ? InternalDestroy.force() : InternalDestroy.instance())
                     .get(getObjectStopTimeout(), TimeUnit.MILLISECONDS);
 
             if (Boolean.TRUE.equals(success)) {
