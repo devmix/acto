@@ -43,6 +43,7 @@ class DispatcherConfigSpec extends Specification {
         config.heartbeatInterval == Duration.ofMinutes(5)
         config.idleTimeout == Duration.ofMinutes(5)
         config.waitMessagesTimeout == Duration.ofMillis(500)
+        config.messageTimeout == Duration.ZERO
         config.destroyTimeout == Duration.ofSeconds(15)
         config.dependencyStartTimeout == Duration.ofSeconds(15)
         config.dependencyStopTimeout == Duration.ofSeconds(15)
