@@ -396,7 +396,11 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private <R> CompletableFuture<R> dispatch(final Object message, final boolean userMessage) {
-        final var dispatcherMessage = new QueueEntry<>(message, new CompletableFuture<R>());
+        final var dispatcherMessage = new QueueEntry<R>(message, new CompletableFuture<>());
+        if (userMessage && isUserMessage(message) && !config.getMessageTimeout().isZero()) {
+            // nanoseconds, not milliseconds: a sub-millisecond timeout must not truncate to 0
+            dispatcherMessage.future().orTimeout(config.getMessageTimeout().toNanos(), TimeUnit.NANOSECONDS);
+        }
         addToQueue(dispatcherMessage, userMessage);
         return dispatcherMessage.future();
     }
@@ -918,6 +922,10 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                         }
                     }
                     try {
+                        if (msg.future() != null && msg.future().isCompletedExceptionally()) {
+                            // the caller timed out or cancelled this request: skip the processing
+                            continue;
+                        }
                         msg.success(processNextMessage(msg.message()));
                     } catch (final Exception e) {
                         LOG.error(e.getMessage(), e);
