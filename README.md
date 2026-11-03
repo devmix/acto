@@ -37,6 +37,7 @@ final var dispatcher = new DefaultActiveObjectsDispatcher(DispatcherConfig.build
 | `heartbeatInterval` | 5 min | how often the heartbeat checks objects for idle |
 | `idleTimeout` | 5 min | inactivity time before an object is deactivated |
 | `waitMessagesTimeout` | 500 ms | how long the dispatch task waits for new messages before terminating |
+| `messageTimeout` | 0 | default deadline for `request()` futures; timed-out or cancelled messages are skipped; `0` = disabled |
 | `destroyTimeout` | 15 s | how long `destroy()` waits for the object to be destroyed |
 | `dependencyStartTimeout` | 15 s | how long the start of a dependency is awaited |
 | `dependencyStopTimeout` | 15 s | how long the stop of a dependency is awaited |
