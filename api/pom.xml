@@ -50,4 +50,47 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>japicmp</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.siom79.japicmp</groupId>
+                        <artifactId>japicmp-maven-plugin</artifactId>
+                        <version>0.21.0</version>
+                        <configuration>
+                            <oldVersion>
+                                <dependency>
+                                    <groupId>${project.groupId}</groupId>
+                                    <artifactId>${project.artifactId}</artifactId>
+                                    <version>${japicmp.baseline.version}</version>
+                                    <type>jar</type>
+                                </dependency>
+                            </oldVersion>
+                            <parameter>
+                                <onlyBinaryIncompatible>true</onlyBinaryIncompatible>
+                                <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                                <accessModifier>public</accessModifier>
+                                <includeSynthetic>true</includeSynthetic>
+                                <ignoreMissingClasses>true</ignoreMissingClasses>
+                                <includes>
+                                    <include>com.github.devmix.process.acto.*</include>
+                                </includes>
+                            </parameter>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>cmp</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
