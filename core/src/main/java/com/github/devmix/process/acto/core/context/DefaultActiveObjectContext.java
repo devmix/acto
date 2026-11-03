@@ -323,6 +323,18 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         addToQueue(entry, false);
     }
 
+    /**
+     * A user-supplied metrics implementation must never break message processing:
+     * every callback is invoked through this guard.
+     */
+    private void safeMetrics(final Runnable callback) {
+        try {
+            callback.run();
+        } catch (final Exception e) {
+            LOG.warn("Metrics callback failed for object [{}]: {}", id, e.toString());
+        }
+    }
+
     private <R> void addToQueue(final QueueEntry<R> entry, final boolean userMessage) {
         final var message = entry.message();
         if (status == ActiveObjectStatus.DESTROYED && !(message instanceof InternalDestroy)) {
@@ -352,7 +364,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 }
             } else {
                 rejectedMessages.incrementAndGet();
-                metrics.messageRejected(id);
+                safeMetrics(() -> metrics.messageRejected(id));
                 final var overflow = new QueueOverflowException(
                         "Queue of object [" + id + "] is full: capacity [" + config.getQueueCapacity() + "], message [" + message + "] rejected");
                 if (entry.future() != null) {
@@ -378,7 +390,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             // destroy request is processed first, so no accepted work is lost
             queue.offerLast(entry);
         }
-        metrics.queueDepth(id, queue.size());
+        safeMetrics(() -> metrics.queueDepth(id, queue.size()));
         processNextMessages();
     }
 
@@ -544,7 +556,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             }
 
             status = ActiveObjectStatus.DESTROYED;
-            metrics.objectDestroyed(id);
+            safeMetrics(() -> metrics.objectDestroyed(id));
         } catch (final Exception e) {
             status = oldStatus;
             throw e;
@@ -935,9 +947,13 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                         final var processed = processNextMessage(msg.message());
                         msg.success(processed);
                         if (isUserMessage(msg.message())) {
-                            metrics.messageProcessed(id, System.nanoTime() - startedAt);
+                            safeMetrics(() -> metrics.messageProcessed(id, System.nanoTime() - startedAt));
                         }
-                        metrics.queueDepth(id, queue.size());
+                        if (status != ActiveObjectStatus.DESTROYED) {
+                            // after destroy the queue is meaningless: reporting its depth would
+                            // re-register the per-object gauges that objectDestroyed just removed
+                            safeMetrics(() -> metrics.queueDepth(id, queue.size()));
+                        }
                     } catch (final Exception e) {
                         LOG.error(e.getMessage(), e);
                         msg.fail(e);

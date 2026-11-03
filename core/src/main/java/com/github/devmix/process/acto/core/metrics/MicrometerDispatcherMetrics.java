@@ -19,6 +19,7 @@
 package com.github.devmix.process.acto.core.metrics;
 
 import com.github.devmix.process.acto.DispatcherMetrics;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 
@@ -48,7 +49,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MicrometerDispatcherMetrics implements DispatcherMetrics {
 
     private final MeterRegistry registry;
-    private final ConcurrentHashMap<String, AtomicInteger> queueDepths = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, GaugeHolder> queueDepths = new ConcurrentHashMap<>();
+
+    private record GaugeHolder(AtomicInteger value, Gauge gauge) {
+    }
 
     /**
      * Creates metrics bound to the given registry.
@@ -74,13 +78,24 @@ public class MicrometerDispatcherMetrics implements DispatcherMetrics {
     @Override
     public void queueDepth(final Object objectId, final int depth) {
         final var key = String.valueOf(objectId);
-        queueDepths.computeIfAbsent(key, k -> registry.gauge("acto.queue.depth", tags(objectId), new AtomicInteger()))
-                .set(depth);
+        queueDepths.computeIfAbsent(key, k -> {
+            final var value = new AtomicInteger();
+            final var gauge = Gauge.builder("acto.queue.depth", value, AtomicInteger::get)
+                    .tags(tags(objectId))
+                    .register(registry);
+            return new GaugeHolder(value, gauge);
+        }).value().set(depth);
     }
 
     @Override
     public void objectDestroyed(final Object objectId) {
         registry.counter("acto.objects.destroyed", tags(objectId)).increment();
+        // drop the per-object gauge so registries do not accumulate stale entries
+        // for objects that no longer exist
+        final var holder = queueDepths.remove(String.valueOf(objectId));
+        if (holder != null) {
+            registry.remove(holder.gauge());
+        }
     }
 
     private static List<Tag> tags(final Object objectId) {

@@ -153,15 +153,81 @@ class DispatcherMetricsSpec extends Specification {
         when:
         (1..5).each { object.request("msg-$it") }
         object.awaitEmptyQueue(30, TimeUnit.SECONDS)
+
+        then:
+        meterRegistry.get('acto.queue.depth').tag('object', 'echo').gauge().value() == 0.0d
+
+        when:
         registry.destroy('echo', true)
 
         then:
         meterRegistry.get('acto.messages.processed').tag('object', 'echo').counter().count() == 5.0d
         meterRegistry.get('acto.message.latency').tag('object', 'echo').timer().count() == 5L
-        meterRegistry.get('acto.queue.depth').tag('object', 'echo').gauge().value() == 0.0d
         meterRegistry.get('acto.objects.destroyed').tag('object', 'echo').counter().count() == 1.0d
 
         cleanup:
         meterRegistry.close()
+    }
+
+    def "micrometer gauge is removed when the object is destroyed"() {
+        given:
+        def meterRegistry = new SimpleMeterRegistry()
+        def config = DispatcherConfig.builder()
+                .metrics(new MicrometerDispatcherMetrics(meterRegistry))
+                .build()
+        def registry = new DefaultActiveObjectsDispatcher(config)
+        def object = registry.create({ id, options -> new Echo() }, 'echo', null)
+
+        when:
+        object.request('m').get(30, TimeUnit.SECONDS)
+
+        then:
+        meterRegistry.find('acto.queue.depth').tag('object', 'echo').gauge() != null
+
+        when:
+        registry.destroy('echo', true)
+
+        then:
+        meterRegistry.find('acto.queue.depth').tag('object', 'echo').gauge() == null
+        meterRegistry.find('acto.objects.destroyed').tag('object', 'echo').counter().count() == 1.0d
+
+        cleanup:
+        meterRegistry.close()
+    }
+
+    def "a throwing metrics implementation does not break message processing"() {
+        given: 'a metrics implementation that always explodes'
+        def exploding = new DispatcherMetrics() {
+            @Override
+            void messageProcessed(final Object objectId, final long latencyNanos) {
+                throw new IllegalStateException('boom')
+            }
+
+            @Override
+            void queueDepth(final Object objectId, final int depth) {
+                throw new IllegalStateException('boom')
+            }
+
+            @Override
+            void objectDestroyed(final Object objectId) {
+                throw new IllegalStateException('boom')
+            }
+        }
+        def registry = new DefaultActiveObjectsDispatcher(DispatcherConfig.builder().metrics(exploding).build())
+        def object = registry.create({ id, options -> new Echo() }, 'echo', null)
+
+        when: 'messages flow through every guarded callback'
+        def future = object.request('m')
+
+        then: 'the message is still processed and the future still completes'
+        future.get(30, TimeUnit.SECONDS) == 'm'
+        object.awaitEmptyQueue(30, TimeUnit.SECONDS)
+
+        when:
+        def destroyed = registry.destroy('echo', true)
+
+        then: 'destroy succeeds despite the throwing observer'
+        destroyed
+        !registry.destroy('echo', true) // already gone: unknown id
     }
 }
