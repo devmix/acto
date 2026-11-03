@@ -161,6 +161,37 @@ class DispatcherConfigSpec extends Specification {
 
         then:
         thrown(IllegalArgumentException)
+
+        when:
+        DispatcherConfig.builder().messageTimeout(null).build()
+
+        then:
+        thrown(IllegalArgumentException)
+    }
+
+    def "toBuilder copies all values and keeps validation"() {
+        given:
+        def config = DispatcherConfig.standard()
+
+        expect:
+        def copy = config.toBuilder().build()
+        copy.heartbeatInterval == config.heartbeatInterval
+        copy.idleTimeout == config.idleTimeout
+        copy.waitMessagesTimeout == config.waitMessagesTimeout
+        copy.messageTimeout == config.messageTimeout
+        copy.destroyTimeout == config.destroyTimeout
+        copy.dependencyStartTimeout == config.dependencyStartTimeout
+        copy.dependencyStopTimeout == config.dependencyStopTimeout
+        copy.debugLifecycleLogging == config.debugLifecycleLogging
+        copy.queueCapacity == config.queueCapacity
+        copy.queueOverflowPolicy == config.queueOverflowPolicy
+        copy.metrics == config.metrics
+
+        when:
+        config.toBuilder().heartbeatInterval(Duration.ZERO).build()
+
+        then:
+        thrown(IllegalArgumentException)
     }
 
     def "idle timeout shorter than heartbeat is allowed with a warning"() {
