@@ -13,6 +13,8 @@ An implementation variant of Active Objects with the following features:
 
 Artifact can be downloaded from [Maven Central](https://central.sonatype.com/artifact/com.github.devmix.process.acto/devmix-process-acto-core).
 
+See [CHANGELOG.md](CHANGELOG.md) for release notes and the 0.1.x → 0.2.0 migration guide.
+
 ```xml
 <dependency>
     <groupId>com.github.devmix.process.acto</groupId>
