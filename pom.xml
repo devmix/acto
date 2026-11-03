@@ -175,6 +175,16 @@
                     <groupId>org.codehaus.gmavenplus</groupId>
                     <artifactId>gmavenplus-plugin</artifactId>
                     <version>4.1.1</version>
+                    <configuration>
+                        <testSources>
+                            <testSource>
+                                <directory>${project.basedir}/src/test/java</directory>
+                                <includes>
+                                    <include>**/*.groovy</include>
+                                </includes>
+                            </testSource>
+                        </testSources>
+                    </configuration>
                     <executions>
                         <execution>
                             <goals>
@@ -197,7 +207,7 @@
                     <configuration>
                         <includes>
                             <include>**/*Spec.class</include>
-                            <include>**/*Test.java</include>
+                            <include>**/*Test.class</include>
                         </includes>
                     </configuration>
                 </plugin>

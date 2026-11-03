@@ -131,12 +131,16 @@ public interface ActiveObjectsDispatcher {
     void unregisterFactory(Class<?> objectClass);
 
     /**
-     * Destroys an active object with the specified ID. If force is true, it will forcibly terminate
-     * the active object; otherwise, it will attempt to destroy it gracefully.
+     * Destroys an active object with the specified ID and removes it from the registry.
+     *
+     * <p>This method blocks until the object is destroyed or the internal timeout expires.
+     * It never throws on a failed destruction: any failure (timeout, destruction error)
+     * is reported by {@code false} and the object stays in the registry.</p>
      *
      * @param objectId The unique identifier of the active object to be destroyed.
      * @param force    Indicates whether to forcefully destroy the active object (true) or not (false).
-     * @return True if the active object was successfully destroyed; otherwise, false.
+     * @return True if the active object was successfully destroyed and removed from the registry;
+     *         otherwise, false (unknown id, destruction failed or timed out).
      */
     boolean destroy(Object objectId, boolean force);
 }

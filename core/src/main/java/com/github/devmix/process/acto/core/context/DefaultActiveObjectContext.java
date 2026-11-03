@@ -641,7 +641,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     return onStop(m);
                 } else if (message instanceof InternalDestroy m) {
                     onDestroy(m);
-                    return null;
+                    return Boolean.TRUE;
                 }
 
                 onStart(Start.standard());
@@ -670,7 +670,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     }
                     onStop(Stop.force());
                     onDestroy(m);
-                    return null;
+                    return Boolean.TRUE;
                 }
 
                 onActivate(Idle.activate());
@@ -695,7 +695,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     onDeactivate(Idle.deactivateNow());
                     onStop(Stop.force());
                     onDestroy(m);
-                    return null;
+                    return Boolean.TRUE;
                 }
 
                 return onMessage(message);
@@ -711,7 +711,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     return Boolean.TRUE;
                 } else if (message instanceof InternalDestroy m) {
                     onDestroy(m);
-                    return null;
+                    return Boolean.TRUE;
                 }
 
                 // User message || ActivateMessage || DeactivateMessage -> exception
@@ -719,8 +719,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
 
             case DESTROYED:
                 if (message instanceof InternalDestroy) {
-                    // ignore
-                    return null;
+                    // ignore: already destroyed, destroy is idempotent
+                    return Boolean.TRUE;
                 }
                 // -> exception
 
