@@ -41,6 +41,8 @@ final var dispatcher = new DefaultActiveObjectsDispatcher(DispatcherConfig.build
 | `dependencyStartTimeout` | 15 s | how long the start of a dependency is awaited |
 | `dependencyStopTimeout` | 15 s | how long the stop of a dependency is awaited |
 | `debugLifecycleLogging` | `false` | log lifecycle events on the INFO level (otherwise DEBUG) |
+| `queueCapacity` | `0` | maximum number of queued user messages per object; `0` = unlimited |
+| `queueOverflowPolicy` | `FAIL` | `FAIL` rejects new messages with `QueueOverflowException`; `BLOCK` waits for a free slot |
 
 ## Example
 

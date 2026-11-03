@@ -66,6 +66,16 @@ public interface ActiveObjectContext<T> {
     void awaitEmptyQueue(long timeout, TimeUnit unit) throws InterruptedException, TimeoutException;
 
     /**
+     * The number of user messages rejected by the queue overflow policy since this active
+     * object was created. Rejections happen only when a bounded queue is configured.
+     *
+     * @return the number of rejected messages
+     */
+    default long getRejectedMessages() {
+        return 0L;
+    }
+
+    /**
      * Retrieves a dependency on another active object by its identifier.
      *
      * @param objectId The identifier of the dependent active object
