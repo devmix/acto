@@ -824,7 +824,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     .get(config.getDependencyStartTimeout().toMillis(), TimeUnit.MILLISECONDS));
             dependency.setLastError(null);
         } catch (final RuntimeException | InterruptedException | ExecutionException | TimeoutException e) {
-            dependency.setLastError(e.getMessage());
+            dependency.setLastError(errorText(e));
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
@@ -856,6 +856,10 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         }
     }
 
+    private static String errorText(final Exception e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
     private boolean stopDependency(final Stop message, final DependencyState dependency, final Object dependencyId) {
         try {
             final var success = Boolean.TRUE.equals(dependency.getObject()
@@ -867,8 +871,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            dependency.setLastError(e.getMessage());
-            throw new DependencyException("Cannot stop dependency: " + dependencyId);
+            dependency.setLastError(errorText(e));
+            throw new DependencyException("Cannot stop dependency: " + dependencyId, e);
         }
     }
 
