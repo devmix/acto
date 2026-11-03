@@ -292,5 +292,11 @@
                 </plugins>
             </build>
         </profile>
+        <profile>
+            <id>benchmarks</id>
+            <modules>
+                <module>benchmarks</module>
+            </modules>
+        </profile>
     </profiles>
 </project>
