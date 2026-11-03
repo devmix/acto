@@ -38,7 +38,7 @@ import java.time.Duration;
  *
  * @author Sergey Grachev
  */
-@Builder(toBuilder = true, builderMethodName = "rawBuilder")
+@Builder(builderMethodName = "rawBuilder")
 @Getter
 public final class DispatcherConfig {
 
@@ -125,12 +125,35 @@ public final class DispatcherConfig {
      * @return a validating builder
      */
     public static DispatcherConfigBuilder builder() {
-        return new DispatcherConfigBuilder() {
-            @Override
-            public DispatcherConfig build() {
-                return validate(super.build());
-            }
-        };
+        return new ValidatingBuilder();
+    }
+
+    /**
+     * Returns a validating builder pre-populated with this configuration's values.
+     *
+     * @return a validating builder
+     */
+    public DispatcherConfigBuilder toBuilder() {
+        return builder()
+                .heartbeatInterval(heartbeatInterval)
+                .idleTimeout(idleTimeout)
+                .waitMessagesTimeout(waitMessagesTimeout)
+                .messageTimeout(messageTimeout)
+                .destroyTimeout(destroyTimeout)
+                .dependencyStartTimeout(dependencyStartTimeout)
+                .dependencyStopTimeout(dependencyStopTimeout)
+                .debugLifecycleLogging(debugLifecycleLogging)
+                .queueCapacity(queueCapacity)
+                .queueOverflowPolicy(queueOverflowPolicy)
+                .metrics(metrics);
+    }
+
+    private static final class ValidatingBuilder extends DispatcherConfigBuilder {
+
+        @Override
+        public DispatcherConfig build() {
+            return validate(super.build());
+        }
     }
 
     private static DispatcherConfig validate(final DispatcherConfig config) {
@@ -140,7 +163,7 @@ public final class DispatcherConfig {
         requirePositive("destroyTimeout", config.destroyTimeout);
         requirePositive("dependencyStartTimeout", config.dependencyStartTimeout);
         requirePositive("dependencyStopTimeout", config.dependencyStopTimeout);
-        if (config.messageTimeout.isNegative()) {
+        if (config.messageTimeout == null || config.messageTimeout.isNegative()) {
             throw new IllegalArgumentException("messageTimeout must not be negative: " + config.messageTimeout);
         }
         if (config.idleTimeout.compareTo(config.heartbeatInterval) < 0) {
