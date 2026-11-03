@@ -52,3 +52,14 @@ jobs:
           -Dtest.excludes=none
           -Dtest=com.github.devmix.process.acto.stress.*Spec
           -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Upload analysis reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-reports
+          path: |
+            api/target/site/spotbugs.html
+            core/target/site/spotbugs.html
+            core/target/site/jacoco/
+          if-no-files-found: warn
