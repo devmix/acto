@@ -53,7 +53,7 @@ jobs:
 
       - name: JPMS smoke test
         run: |
-          ./mvnw -B -ntp -q dependency:build-classpath -pl core -DincludeScope=compile -Dmdep.outputFile="$RUNNER_TEMP/cp.txt"
+          ./mvnw -B -ntp -q dependency:build-classpath -pl core -am -DincludeScope=compile -Dmdep.outputFile="$RUNNER_TEMP/cp.txt"
           MP="api/target/classes:core/target/classes:$(cat "$RUNNER_TEMP/cp.txt")"
           javac --module-path "$MP" --add-modules devmix.process.acto.core -d "$RUNNER_TEMP/smoke" smoke/ModuleSmoke.java
           java --module-path "$MP" -cp "$RUNNER_TEMP/smoke" --add-modules devmix.process.acto.core ModuleSmoke
@@ -67,7 +67,7 @@ jobs:
           git fetch --no-tags --depth 1 origin "refs/tags/v${JAPICMP_BASELINE}:refs/tags/v${JAPICMP_BASELINE}"
           git worktree add "$RUNNER_TEMP/baseline" "v${JAPICMP_BASELINE}"
           ./mvnw -B -ntp -q -f "$RUNNER_TEMP/baseline/pom.xml" install -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -pl api,core -am
-          ./mvnw -B -ntp -Pjapicmp verify -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -Djapicmp.baseline.version="${JAPICMP_BASELINE}" -pl api,core
+          ./mvnw -B -ntp -Pjapicmp verify -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -Djapicmp.baseline.version="${JAPICMP_BASELINE}" -pl api,core -am
 
       - name: Stress tests
         if: success()
