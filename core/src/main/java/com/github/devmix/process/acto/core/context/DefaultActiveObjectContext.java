@@ -57,6 +57,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
@@ -319,10 +320,6 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         return result;
     }
 
-    private <R> void addToQueue(final QueueEntry<R> entry) {
-        addToQueue(entry, false);
-    }
-
     /**
      * A user-supplied metrics implementation must never break message processing:
      * every callback is invoked through this guard.
@@ -420,10 +417,6 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         }
         addToQueue(dispatcherMessage, userMessage);
         return dispatcherMessage.future();
-    }
-
-    private void dispatchNoResponse(final Object message) {
-        dispatchNoResponse(message, false);
     }
 
     private void dispatchNoResponse(final Object message, final boolean userMessage) {
@@ -830,8 +823,11 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             dependency.setObject(this.<ActiveObject<?>>redirectRequest(dependencyId, message)
                     .get(config.getDependencyStartTimeout().toMillis(), TimeUnit.MILLISECONDS));
             dependency.setLastError(null);
-        } catch (final Exception e) {
+        } catch (final RuntimeException | InterruptedException | ExecutionException | TimeoutException e) {
             dependency.setLastError(e.getMessage());
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             if (!dependency.isOptional()) {
                 throw new DependencyException("Cannot start dependency: " + dependencyId, e);
             } else {
@@ -867,7 +863,10 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             dependency.setLastError(null);
             dependency.setObject(null);
             return success;
-        } catch (final Exception e) {
+        } catch (final RuntimeException | InterruptedException | ExecutionException | TimeoutException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             dependency.setLastError(e.getMessage());
             throw new DependencyException("Cannot stop dependency: " + dependencyId);
         }
