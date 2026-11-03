@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI caches the Temurin JDK archive and provisions it without `setup-java` (the archive is
   extracted locally; `setup-java@v5` removed local-file installation upstream)
+- CI runs SpotBugs + findsecbugs, ErrorProne and a JaCoCo line-coverage gate on `core`
 - `catch (Exception)` around dependency start/stop narrowed to the concrete exceptions
   (`Error`s are no longer swallowed, the interrupt flag is restored)
 
