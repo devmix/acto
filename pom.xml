@@ -24,7 +24,7 @@
 
     <groupId>com.github.devmix.process.acto</groupId>
     <artifactId>project</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <packaging>pom</packaging>
 
     <name>devMix · Process · Active Objects [ActO]</name>
