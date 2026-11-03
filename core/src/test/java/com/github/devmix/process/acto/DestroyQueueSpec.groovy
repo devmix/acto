@@ -22,6 +22,7 @@ import com.github.devmix.process.acto.core.registry.DefaultActiveObjectsDispatch
 import com.github.devmix.process.acto.exceptions.DispatchingException
 import com.github.devmix.process.acto.listeners.OnMessageListener
 import spock.lang.Specification
+import spock.util.concurrent.PollingConditions
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
@@ -119,6 +120,59 @@ class DestroyQueueSpec extends Specification {
 
         cleanup:
         counter.release.countDown()
+        registry.shutdown(true)
+    }
+
+    def 'awaitEmptyQueue completes after a forced destroy with a large backlog'() {
+        given:
+        def registry = new DefaultActiveObjectsDispatcher()
+        def blocker = new BlockingObject()
+        def object = registry.create({ id, options -> blocker }, 'obj-1', null)
+        object.request('warmup').get(5, TimeUnit.SECONDS) == 'pong'
+        def blocking = object.request('block')
+        (1..1000).each { object.requestAndForget('ping') }
+
+        when: 'the object is force-destroyed and the blocking message finishes'
+        def releaseLater = Thread.start { Thread.sleep(50); blocker.release.countDown() }
+        registry.destroy('obj-1', true)
+        releaseLater.join()
+
+        then: 'the drained backlog does not leave pending messages behind'
+        noExceptionThrown()
+        object.awaitEmptyQueue(5, TimeUnit.SECONDS)
+
+        cleanup:
+        blocker.release.countDown()
+        registry.shutdown(true)
+    }
+
+    def 'messages accepted after the graceful destroy marker are drained, not processed'() {
+        given:
+        def registry = new DefaultActiveObjectsDispatcher()
+        def blocker = new BlockingObject()
+        def object = registry.create({ id, options -> blocker }, 'obj-1', null)
+        object.request('warmup').get(5, TimeUnit.SECONDS) == 'pong'
+        def blocking = object.request('block')
+
+        when: 'a graceful destroy is queued and another message arrives after the marker'
+        def destroyThread = Thread.start { registry.destroy('obj-1', false) }
+        new PollingConditions(timeout: 2).eventually {
+            assert object.toString().contains('queue=1')
+        }
+        def late = object.request('late')
+        blocker.release.countDown()
+        destroyThread.join(5000)
+        late.get(5, TimeUnit.SECONDS)
+
+        then: 'the late message fails with DispatchingException'
+        def e = thrown(ExecutionException)
+        e.cause instanceof DispatchingException
+
+        and: 'the queue is empty afterwards'
+        object.awaitEmptyQueue(5, TimeUnit.SECONDS)
+
+        cleanup:
+        blocker.release.countDown()
         registry.shutdown(true)
     }
 
