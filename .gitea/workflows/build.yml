@@ -19,21 +19,25 @@ jobs:
         id: jdk-cache
         uses: actions/cache@v4
         with:
-          path: ~/.cache/jdk
-          key: jdk-temurin-${{ env.JDK_VERSION }}-linux-x64
+          # workspace-relative: act_runner extracts cache archives relative to
+          # the workspace, so absolute ~ paths never round-trip back to $HOME
+          path: .jdk-cache
+          key: jdk-v3-${{ env.JDK_VERSION }}-linux-x64
 
       - name: Download JDK
         if: steps.jdk-cache.outputs.cache-hit != 'true'
         run: |
-          mkdir -p ~/.cache/jdk
-          curl -fsSL -o ~/.cache/jdk/jdk.tar.gz \
+          mkdir -p .jdk-cache
+          curl -fsSL -o .jdk-cache/jdk.tar.gz \
             "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-${JDK_VERSION/\+/%2B}/OpenJDK21U-jdk_x64_linux_hotspot_${JDK_VERSION//+/_}.tar.gz"
 
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-          jdk-file: /home/runner/.cache/jdk/jdk.tar.gz
+      - name: Set up JDK
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.jdk"
+          tar -xzf "$GITHUB_WORKSPACE/.jdk-cache/jdk.tar.gz" -C "$GITHUB_WORKSPACE/.jdk" --strip-components=1 --no-same-owner
+          echo "JAVA_HOME=$GITHUB_WORKSPACE/.jdk" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/.jdk/bin" >> "$GITHUB_PATH"
+          "$GITHUB_WORKSPACE/.jdk/bin/java" -version
 
       - name: Cache Maven repository
         uses: actions/cache@v4
