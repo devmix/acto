@@ -18,7 +18,7 @@
 
 package com.github.devmix.process.acto;
 
-import com.github.devmix.process.acto.core.context.DefaultActiveObjectContext;
+import com.github.devmix.process.acto.core.config.DispatcherConfig;
 import com.github.devmix.process.acto.core.registry.DefaultActiveObjectsDispatcher;
 import com.github.devmix.process.acto.fixtures.test.HelloWorldObject;
 import com.github.devmix.process.acto.fixtures.test.NodeFactory;
@@ -46,11 +46,10 @@ public class ReadmeExample {
     public static final int MESSAGES = 100_000;
 
     public static void main(final String[] args) throws ExecutionException, InterruptedException, IOException, TimeoutException {
-        // Enable debugging information for the DefaultActiveObjectContext
-        DefaultActiveObjectContext.DEBUGGING_INFO = true;
-
-        // Create an instance of the Active Objects dispatcher
-        final var r = new DefaultActiveObjectsDispatcher();
+        // Create an instance of the Active Objects dispatcher with lifecycle logging enabled
+        final var r = new DefaultActiveObjectsDispatcher(DispatcherConfig.builder()
+                .debugLifecycleLogging(true)
+                .build());
 
         // Register factories for NodeObject and HelloWorldObject classes
         r.registerFactory(NodeObject.class, new NodeFactory());

@@ -21,6 +21,27 @@ Artifact can be downloaded from [Maven Central](https://central.sonatype.com/art
 </dependency>
 ```
 
+## Configuration
+
+`DefaultActiveObjectsDispatcher` accepts an immutable `DispatcherConfig`:
+
+```java
+final var dispatcher = new DefaultActiveObjectsDispatcher(DispatcherConfig.builder()
+        .idleTimeout(Duration.ofMinutes(10))
+        .heartbeatInterval(Duration.ofMinutes(1))
+        .build());
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `heartbeatInterval` | 5 min | how often the heartbeat checks objects for idle |
+| `idleTimeout` | 5 min | inactivity time before an object is deactivated |
+| `waitMessagesTimeout` | 500 ms | how long the dispatch task waits for new messages before terminating |
+| `destroyTimeout` | 15 s | how long `destroy()` waits for the object to be destroyed |
+| `dependencyStartTimeout` | 15 s | how long the start of a dependency is awaited |
+| `dependencyStopTimeout` | 15 s | how long the stop of a dependency is awaited |
+| `debugLifecycleLogging` | `false` | log lifecycle events on the INFO level (otherwise DEBUG) |
+
 ## Example
 
 Create and send message (`getCounter`) to an [EchoObject](core/src/test/java/com/github/devmix/process/acto/fixtures/EchoObject.java) / [EchoOptions](core/src/test/java/com/github/devmix/process/acto/fixtures/EchoOptions.java):
@@ -82,11 +103,10 @@ public class ReadmeExample {
     public static final int MESSAGES = 100_000;
 
     public static void main(final String[] args) throws ExecutionException, InterruptedException, IOException, TimeoutException {
-        // Enable debugging information for the DefaultActiveObjectContext
-        DefaultActiveObjectContext.DEBUGGING_INFO = true;
-
-        // Create an instance of the Active Objects dispatcher
-        final var r = new DefaultActiveObjectsDispatcher();
+        // Create an instance of the Active Objects dispatcher with lifecycle logging enabled
+        final var r = new DefaultActiveObjectsDispatcher(DispatcherConfig.builder()
+                .debugLifecycleLogging(true)
+                .build());
 
         // Register factories for NodeObject and HelloWorldObject classes
         r.registerFactory(NodeObject.class, new NodeFactory());
@@ -106,7 +126,7 @@ public class ReadmeExample {
         // Get the list of files from the file system object and print them to the console
         o7.get(SomeFileSystemObject::getFilesList).thenAccept(System.out::println);
 
-        // Send a HELLO message from NodeObject 'o1' and print the response
+        // Request a HELLO message from NodeObject 'o1' and print the response
         System.out.println(o1.request(NodeObject.MSG_HELLO).get());
 
         // Send a broadcast STOP force message to NodeObject 'o5'
@@ -129,7 +149,7 @@ public class ReadmeExample {
         load(o6);
 
         // Get the counter from NodeObject 'o6' after the load test and print the response
-        System.out.println(o6.get(NodeObject::getCounter).get());
+        System.out.println("total messages: " + o6.get(NodeObject::getCounter).get());
     }
 
     /**
@@ -184,7 +204,7 @@ public class ReadmeExample {
         // Print the duration of the test in milliseconds
         System.out.println("finished in " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - now) + " msec");
     }
-}    
+}
 ```
 
 Output:
@@ -194,51 +214,51 @@ Output:
 // ----------------------------------------------------------------------------
 
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-id:n:1, status:CREATING]
+    id:n:1, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-id:n:1, status:CREATED, dependencies:
-n:2 - type:DEPENDS_ON, resolved:false, optional:false
+    id:n:1, status:CREATED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:false, optional:false
 ]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-id:n:2, status:CREATING]
+    id:n:2, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-id:n:2, status:CREATED, dependencies:
-n:3 - type:DEPENDS_ON, resolved:false, optional:false
+    id:n:2, status:CREATED, dependencies:
+        n:3 - type:DEPENDS_ON, resolved:false, optional:false
 ]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-id:n:3, status:CREATING]
+    id:n:3, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-id:n:3, status:CREATED, dependencies:
-n:5 - type:DEPENDS_ON, resolved:false, optional:false
-n:4 - type:DEPENDS_ON, resolved:false, optional:false
-n:6 - type:DEPENDS_ON, resolved:false, optional:true
+    id:n:3, status:CREATED, dependencies:
+        n:5 - type:DEPENDS_ON, resolved:false, optional:false
+        n:4 - type:DEPENDS_ON, resolved:false, optional:false
+        n:6 - type:DEPENDS_ON, resolved:false, optional:true
 ]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-id:n:4, status:CREATING]
+    id:n:4, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-id:n:4, status:CREATED]
+    id:n:4, status:CREATED]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-id:n:5, status:CREATING]
+    id:n:5, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-id:n:5, status:CREATED]
+    id:n:5, status:CREATED]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-id:n:6, status:CREATING]
+    id:n:6, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-id:n:6, status:CREATED]
+    id:n:6, status:CREATED]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - CREATE ⟶ ⟶ [
-id:fs:1, status:CREATING]
+    id:fs:1, status:CREATING]
 [main] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ CREATE [
-id:fs:1, status:CREATED]
+    id:fs:1, status:CREATED]
 
 // ----------------------------------------------------------------------------
 // o7.get(SomeFileSystemObject::getFilesList).thenAccept(System.out::println);
 // ----------------------------------------------------------------------------
-        
-[ForkJoinPool-1-worker-2] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[] [
-id:fs:1, status:CREATED]
-[ForkJoinPool-1-worker-2] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[fs:1] [
-id:fs:1, status:STARTED]
-        
+
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[] [
+    id:fs:1, status:CREATED]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[fs:1] [
+    id:fs:1, status:STARTED]
+
 file 1
 ...
 file N
@@ -246,54 +266,54 @@ file N
 // ----------------------------------------------------------------------------
 // System.out.println(o1.request(NodeObject.MSG_HELLO).get());
 // ----------------------------------------------------------------------------
-        
-[ForkJoinPool-1-worker-3] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[] [
-id:n:1, status:CREATED, dependencies:
-n:2 - type:DEPENDS_ON, resolved:false, optional:false
+
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[] [
+    id:n:1, status:CREATED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:false, optional:false
 ]
-[ForkJoinPool-1-worker-4] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1] [
-id:n:2, status:CREATED, dependencies:
-n:3 - type:DEPENDS_ON, resolved:false, optional:false
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1] [
+    id:n:2, status:CREATED, dependencies:
+        n:3 - type:DEPENDS_ON, resolved:false, optional:false
 ]
-[ForkJoinPool-1-worker-5] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2] [
-id:n:3, status:CREATED, dependencies:
-n:5 - type:DEPENDS_ON, resolved:false, optional:false
-n:4 - type:DEPENDS_ON, resolved:false, optional:false
-n:6 - type:DEPENDS_ON, resolved:false, optional:true
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2] [
+    id:n:3, status:CREATED, dependencies:
+        n:5 - type:DEPENDS_ON, resolved:false, optional:false
+        n:4 - type:DEPENDS_ON, resolved:false, optional:false
+        n:6 - type:DEPENDS_ON, resolved:false, optional:true
 ]
-[ForkJoinPool-1-worker-6] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3] [
-id:n:5, status:CREATED]
-[ForkJoinPool-1-worker-6] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:5] [
-id:n:5, status:STARTED, dependencies:
-n:3 - type:REQUIRED_FOR, resolved:true, optional:false
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3] [
+    id:n:4, status:CREATED]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:4] [
+    id:n:4, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:false
 ]
-[ForkJoinPool-1-worker-8] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3 > n:5] [
-id:n:4, status:CREATED]
-[ForkJoinPool-1-worker-8] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:5 > n:4] [
-id:n:4, status:STARTED, dependencies:
-n:3 - type:REQUIRED_FOR, resolved:true, optional:false
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3] [
+    id:n:5, status:CREATED]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:5] [
+    id:n:5, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:false
 ]
-[ForkJoinPool-1-worker-7] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3 > n:5 > n:4] [
-id:n:6, status:CREATED]
-[ForkJoinPool-1-worker-7] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:5 > n:4 > n:6] [
-id:n:6, status:STARTED, dependencies:
-n:3 - type:REQUIRED_FOR, resolved:true, optional:true
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - START ⟶ ⟶ C:[n:1 > n:2 > n:3] [
+    id:n:6, status:CREATED]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:6] [
+    id:n:6, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:true
 ]
-[ForkJoinPool-1-worker-5] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:5 > n:4 > n:6] [
-id:n:3, status:STARTED, dependencies:
-n:2 - type:REQUIRED_FOR, resolved:true, optional:false
-n:5 - type:DEPENDS_ON, resolved:true, optional:false
-n:4 - type:DEPENDS_ON, resolved:true, optional:false
-n:6 - type:DEPENDS_ON, resolved:true, optional:true
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3] [
+    id:n:3, status:STARTED, dependencies:
+        n:2 - type:REQUIRED_FOR, resolved:true, optional:false
+        n:5 - type:DEPENDS_ON, resolved:true, optional:false
+        n:4 - type:DEPENDS_ON, resolved:true, optional:false
+        n:6 - type:DEPENDS_ON, resolved:true, optional:true
 ]
-[ForkJoinPool-1-worker-4] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:5 > n:4 > n:6] [
-id:n:2, status:STARTED, dependencies:
-n:1 - type:REQUIRED_FOR, resolved:true, optional:false
-n:3 - type:DEPENDS_ON, resolved:true, optional:false
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2] [
+    id:n:2, status:STARTED, dependencies:
+        n:1 - type:REQUIRED_FOR, resolved:true, optional:false
+        n:3 - type:DEPENDS_ON, resolved:true, optional:false
 ]
-[ForkJoinPool-1-worker-3] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1 > n:2 > n:3 > n:5 > n:4 > n:6] [
-id:n:1, status:STARTED, dependencies:
-n:2 - type:DEPENDS_ON, resolved:true, optional:false
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ START C:[n:1] [
+    id:n:1, status:STARTED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:true, optional:false
 ]
 
 WORLD 1
@@ -301,60 +321,55 @@ WORLD 1
 // ----------------------------------------------------------------------------
 // o5.request(Stop.force()).get();
 // ----------------------------------------------------------------------------
-        
-[ForkJoinPool-1-worker-7] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[] [
-id:n:5, status:STARTED, dependencies:
-n:3 - type:REQUIRED_FOR, resolved:true, optional:false
-]
-[ForkJoinPool-1-worker-8] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5] [
-id:n:3, status:STARTED, dependencies:
-n:2 - type:REQUIRED_FOR, resolved:true, optional:false
-n:5 - type:DEPENDS_ON, resolved:true, optional:false
-n:4 - type:DEPENDS_ON, resolved:true, optional:false
-n:6 - type:DEPENDS_ON, resolved:true, optional:true
-]
-[ForkJoinPool-1-worker-4] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5 > n:3] [
-id:n:2, status:STARTED, dependencies:
-n:1 - type:REQUIRED_FOR, resolved:true, optional:false
-n:3 - type:DEPENDS_ON, resolved:true, optional:false
-]
-[ForkJoinPool-1-worker-3] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5 > n:3 > n:2] [
-id:n:1, status:STARTED, dependencies:
-n:2 - type:DEPENDS_ON, resolved:true, optional:false
-]
-[ForkJoinPool-1-worker-3] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3 > n:2 > n:1] [
-id:n:1, status:STOPPED, dependencies:
-n:2 - type:DEPENDS_ON, resolved:false, optional:false
-]
-[ForkJoinPool-1-worker-4] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3 > n:2 > n:1] [
-id:n:2, status:STOPPED, dependencies:
-n:3 - type:DEPENDS_ON, resolved:false, optional:false
-]
-[ForkJoinPool-1-worker-8] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3 > n:2 > n:1] [
-id:n:3, status:STOPPED, dependencies:
-n:5 - type:DEPENDS_ON, resolved:false, optional:false
-n:4 - type:DEPENDS_ON, resolved:true, optional:false
-n:6 - type:DEPENDS_ON, resolved:true, optional:true
-]
-[ForkJoinPool-1-worker-5] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - REMOVE UPSTREAM DEP ⟶ ⟶ ID:n:3 [
-id:n:4, status:STARTED, dependencies:
-n:3 - type:REQUIRED_FOR, resolved:true, optional:false
-]
-[ForkJoinPool-1-worker-6] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - REMOVE UPSTREAM DEP ⟶ ⟶ ID:n:3 [
-id:n:6, status:STARTED, dependencies:
-n:3 - type:REQUIRED_FOR, resolved:true, optional:true
-]
-[ForkJoinPool-1-worker-7] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3 > n:2 > n:1] [
-id:n:5, status:STOPPED]
-[ForkJoinPool-1-worker-6] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ REMOVED UPSTREAM DEP ID:n:3 [
-id:n:6, status:STARTED]
 
-// ----------------------------------------------------------------------------
-// o6.requestAndForget(NodeObject.MSG_HELLO);
-// ----------------------------------------------------------------------------
-
-[ForkJoinPool-1-worker-5] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ REMOVED UPSTREAM DEP ID:n:3 [
-id:n:4, status:STARTED]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[] [
+    id:n:5, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:false
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5] [
+    id:n:3, status:STARTED, dependencies:
+        n:2 - type:REQUIRED_FOR, resolved:true, optional:false
+        n:5 - type:DEPENDS_ON, resolved:true, optional:false
+        n:4 - type:DEPENDS_ON, resolved:true, optional:false
+        n:6 - type:DEPENDS_ON, resolved:true, optional:true
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5 > n:3] [
+    id:n:2, status:STARTED, dependencies:
+        n:1 - type:REQUIRED_FOR, resolved:true, optional:false
+        n:3 - type:DEPENDS_ON, resolved:true, optional:false
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - STOP ⟶ ⟶ C:[n:5 > n:3 > n:2] [
+    id:n:1, status:STARTED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:true, optional:false
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3 > n:2 > n:1] [
+    id:n:1, status:STOPPED, dependencies:
+        n:2 - type:DEPENDS_ON, resolved:false, optional:false
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3 > n:2] [
+    id:n:2, status:STOPPED, dependencies:
+        n:3 - type:DEPENDS_ON, resolved:false, optional:false
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - REMOVE UPSTREAM DEP ⟶ ⟶ ID:n:3 [
+    id:n:4, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:false
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5 > n:3] [
+    id:n:3, status:STOPPED, dependencies:
+        n:5 - type:DEPENDS_ON, resolved:false, optional:false
+        n:4 - type:DEPENDS_ON, resolved:true, optional:false
+        n:6 - type:DEPENDS_ON, resolved:true, optional:true
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - REMOVE UPSTREAM DEP ⟶ ⟶ ID:n:3 [
+    id:n:6, status:STARTED, dependencies:
+        n:3 - type:REQUIRED_FOR, resolved:true, optional:true
+]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ STOP C:[n:5] [
+    id:n:5, status:STOPPED]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ REMOVED UPSTREAM DEP ID:n:3 [
+    id:n:6, status:STARTED]
+[] INFO com.github.devmix.process.acto.core.context.DefaultActiveObjectContext - ⟵ ⟵ REMOVED UPSTREAM DEP ID:n:3 [
+    id:n:4, status:STARTED]
 
 // ----------------------------------------------------------------------------
 // o6.get(NodeObject::getCounter).thenAccept(response -> { System.out.println(response); });
@@ -365,25 +380,24 @@ id:n:4, status:STARTED]
 // ----------------------------------------------------------------------------
 // System.out.println(o1);
 // ----------------------------------------------------------------------------
-        
-ActiveObjectContext{id=n:1, status=STOPPED, queue=0, running=false, deps=1}
+
+ActiveObjectContext{id=n:1, status=STOPPED, queue=0, running=true, deps=1}
 
 // ----------------------------------------------------------------------------
 // System.out.println(o6);
 // ----------------------------------------------------------------------------
-        
-ActiveObjectContext{id=n:6, status=STARTED, queue=0, running=false, deps=0}
+
+ActiveObjectContext{id=n:6, status=STARTED, queue=0, running=true, deps=0}
 
 // ----------------------------------------------------------------------------
 // load(o6);
 // ----------------------------------------------------------------------------
-        
-finished in 1507 msec
+
+finished in 463 msec
 
 // ----------------------------------------------------------------------------
 // System.out.println(o6.get(NodeObject::getCounter).get());
 // ----------------------------------------------------------------------------
 
 total messages: 1000003
-
 ```

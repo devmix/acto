@@ -24,6 +24,7 @@ import com.github.devmix.process.acto.ActiveObjectDependency;
 import com.github.devmix.process.acto.ActiveObjectLifecycle;
 import com.github.devmix.process.acto.ActiveObjectStatus;
 import com.github.devmix.process.acto.ActiveObjectsDispatcher;
+import com.github.devmix.process.acto.core.config.DispatcherConfig;
 import com.github.devmix.process.acto.core.utils.ObjectInfoUtils;
 import com.github.devmix.process.acto.exceptions.DependencyException;
 import com.github.devmix.process.acto.exceptions.DispatchingException;
@@ -43,25 +44,22 @@ import com.github.devmix.process.acto.messages.InvokeAndGet;
 import com.github.devmix.process.acto.messages.Start;
 import com.github.devmix.process.acto.messages.Stop;
 import lombok.Getter;
-import org.apache.commons.collections4.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-import java.io.Serial;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -70,7 +68,12 @@ import java.util.function.Consumer;
 public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, ActiveObject<T> {
 
     public static final int NO_DEACTIVATION_TIMEOUT = -2;
-    public static boolean DEBUGGING_INFO = true;
+
+    /**
+     * @deprecated use {@code DispatcherConfig.debugLifecycleLogging} or the SLF4J DEBUG level
+     */
+    @Deprecated
+    public static boolean DEBUGGING_INFO = false;
 
     private static final Logger LOG = LoggerFactory.getLogger(DefaultActiveObjectContext.class);
 
@@ -78,34 +81,38 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final ActiveObjectLifecycle<T> lifecycle;
     private final @Getter Object options;
     private final ActiveObjectsDispatcher dispatcher;
-    private final ForkJoinPool executor;
-    //    private final AtomicLong numberOfThreads = new AtomicLong(0);
+    private final DispatcherConfig config;
+    private final Executor executor;
+    private final StartGraph startGraph;
     private final AtomicBoolean queueTaskRunning = new AtomicBoolean();
+    private final AtomicInteger pendingMessages = new AtomicInteger();
     private final LinkedBlockingDeque<QueueEntry<?>> queue = new LinkedBlockingDeque<>();
-    private final AtomicReference<QueueDispatchingTask> dispatchingTask = new AtomicReference<>();
 
-    private Map<Object, DependencyState> dependencies;
+    private volatile Map<Object, DependencyState> dependencies = Map.of();
 
-    private @Getter T instance;
-    private @Getter ActiveObjectStatus status = ActiveObjectStatus.CREATING;
-    private long lastActivityTime;
+    private volatile @Getter T instance;
+    private volatile @Getter ActiveObjectStatus status = ActiveObjectStatus.CREATING;
+    private volatile long lastActivityTime;
 
-    private @Getter boolean idleAllowed;
-    private @Getter long idleTimeout;
-    private @Getter long waitMessagesTimeout;
+    private volatile @Getter boolean idleAllowed;
+    private volatile @Getter long idleTimeout;
+    private volatile @Getter long waitMessagesTimeout;
 
     public DefaultActiveObjectContext(final Object id, final Object options, @Nullable final T instance,
                                       final ActiveObjectLifecycle<T> lifecycle,
-                                      final ActiveObjectsDispatcher dispatcher, final ForkJoinPool executor) {
+                                      final ActiveObjectsDispatcher dispatcher, final Executor executor,
+                                      final DispatcherConfig config, final StartGraph startGraph) {
         this.id = id;
         this.lifecycle = lifecycle;
         this.options = options;
         this.dispatcher = dispatcher;
         this.executor = executor;
+        this.config = config;
+        this.startGraph = startGraph;
         this.instance = instance;
 
-        this.setIdleTimeout(dispatcher.getIdleTimeout());
-        this.setWaitMessagesTimeout(dispatcher.getWaitMessagesTimeout());
+        this.setIdleTimeout(config.getIdleTimeout().toNanos());
+        this.setWaitMessagesTimeout(config.getWaitMessagesTimeout().toMillis());
 
         this.onCreate();
     }
@@ -116,12 +123,14 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     @Override
-    public void awaitEmptyQueue(final long timeout, final TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-        if (queueTaskRunning.compareAndSet(true, false)) {
-            final var task = dispatchingTask.get();
-            if (task != null) {
-                task.get(timeout, unit);
+    public void awaitEmptyQueue(final long timeout, final TimeUnit unit) throws InterruptedException, TimeoutException {
+        final var deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
+        while (pendingMessages.get() != 0) {
+            if (System.nanoTime() >= deadlineNanos) {
+                throw new TimeoutException("Queue is not empty: " + this);
             }
+            //noinspection BusyWait
+            Thread.sleep(1);
         }
     }
 
@@ -144,7 +153,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
 
     @Override
     public void forEachDependency(final Consumer<ActiveObjectDependency> action, @Nullable final ActiveObjectDependency.Type filterByType) {
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             for (final var state : dependencies.values()) {
                 if (filterByType == null || state.getType() == filterByType) {
                     action.accept(state);
@@ -250,7 +259,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     public void setIdleTimeout(final long idleTimeout) {
-        this.idleTimeout = idleTimeout == -1 ? dispatcher.getIdleTimeout() : idleTimeout;
+        this.idleTimeout = idleTimeout == -1 ? config.getIdleTimeout().toNanos() : idleTimeout;
         this.idleAllowed = this.idleTimeout != NO_DEACTIVATION_TIMEOUT
                 && (instance instanceof OnIdleListener || lifecycle instanceof OnIdleListener);
     }
@@ -262,7 +271,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
 
     @Override
     public void setWaitMessagesTimeout(final long waitMessagesTimeout) {
-        this.waitMessagesTimeout = waitMessagesTimeout == -1 ? dispatcher.getWaitMessagesTimeout() : waitMessagesTimeout;
+        this.waitMessagesTimeout = waitMessagesTimeout == -1 ? config.getWaitMessagesTimeout().toMillis() : waitMessagesTimeout;
     }
 
     @Override
@@ -272,34 +281,41 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 ", status=" + status +
                 ", queue=" + queue.size() +
                 ", running=" + queueTaskRunning.get() +
-                ", deps=" + (dependencies != null ? dependencies.size() : 0) +
+                ", deps=" + dependencies.size() +
                 '}';
     }
 
     private DependencyState addDependency(final Object objectId, final ActiveObjectDependency.Type type, final boolean optional) {
-        if (dependencies == null) {
-            dependencies = new HashMap<>();
-        }
-
         final var result = new DependencyState(type, optional);
 
-        dependencies.put(objectId, result);
+        mutableDependencies().put(objectId, result);
 
         return result;
     }
 
+    /**
+     * The dependency map is allocated lazily: objects without dependencies share the immutable
+     * empty map instance, so the per-object overhead is zero until the first dependency is added.
+     */
+    private synchronized Map<Object, DependencyState> mutableDependencies() {
+        if (!(dependencies instanceof ConcurrentHashMap<?, ?>)) {
+            dependencies = new ConcurrentHashMap<>();
+        }
+        @SuppressWarnings("unchecked")
+        final var result = (Map<Object, DependencyState>) dependencies;
+        return result;
+    }
+
     private <R> void addToQueue(final QueueEntry<R> entry) {
+        pendingMessages.incrementAndGet();
         final var message = entry.message();
         if ((message instanceof Stop stop && stop.isForce())
                 || message instanceof InternalDestroy) {
 
-            if (queueTaskRunning.compareAndSet(true, false)) {
-                final var task = dispatchingTask.get();
-                if (task != null) {
-                    task.cancel(true);
-                }
-            }
-
+            // priority insertion into the head of the queue: the running dispatch task
+            // (if any) will process it right after the current message.
+            // Cancelling the running task is impossible (ForkJoinTask.cancel does not
+            // interrupt exec()) and would break the single-consumer invariant.
             queue.offerFirst(entry);
         } else {
             queue.offerLast(entry);
@@ -327,7 +343,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private void notifyStoppedDependsOnDependencies(final Stop message) {
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             for (final var entry : dependencies.entrySet()) {
                 final var dependency = entry.getValue();
                 if (dependency.isResolved() && dependency.getType() == ActiveObjectDependency.Type.DEPENDS_ON) {
@@ -347,9 +363,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             return;
         }
 
-        if (DEBUGGING_INFO) {
-            LOG.info("ACTIVATE ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("ACTIVATE ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var oldStatus = status;
         try {
@@ -366,16 +380,12 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             status = oldStatus;
             throw e;
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ ACTIVATE [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ ACTIVATE [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
     }
 
     private void onCreate() {
-        if (DEBUGGING_INFO) {
-            LOG.info("CREATE ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("CREATE ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var oldStatus = status;
         try {
@@ -392,9 +402,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             status = oldStatus;
             throw e;
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ CREATE [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ CREATE [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
     }
 
@@ -408,11 +416,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (force || now - lastActivityTime > idleTimeout) {
             final var oldStatus = status;
             try {
-                if (DEBUGGING_INFO) {
-                    LOG.info("DEACTIVATE ⟶ ⟶ F:{} T:{} [{}]",
-                            force, TimeUnit.NANOSECONDS.toMillis(now - lastActivityTime),
-                            ObjectInfoUtils.printObjectState(id, dependencies, status));
-                }
+                lifecycleLog("DEACTIVATE ⟶ ⟶ F:{} T:{} [{}]", force, TimeUnit.NANOSECONDS.toMillis(now - lastActivityTime), ObjectInfoUtils.printObjectState(id, dependencies, status));
 
                 status = ActiveObjectStatus.DEACTIVATING;
 
@@ -431,18 +435,13 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     throw e;
                 }
             } finally {
-                if (DEBUGGING_INFO) {
-                    LOG.info("⟵ ⟵ DEACTIVATE F:{}, [{}]",
-                            force, ObjectInfoUtils.printObjectState(id, dependencies, status));
-                }
+                lifecycleLog("⟵ ⟵ DEACTIVATE F:{}, [{}]", force, ObjectInfoUtils.printObjectState(id, dependencies, status));
             }
         }
     }
 
     private void onDestroy(final InternalDestroy message) {
-        if (DEBUGGING_INFO) {
-            LOG.info("DESTROY ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("DESTROY ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var oldStatus = status;
         try {
@@ -454,7 +453,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 l.onObjectDestroy(this);
             }
 
-            if (MapUtils.isNotEmpty(dependencies)) {
+            if (!dependencies.isEmpty()) {
                 for (final var dependency : dependencies.values()) {
                     dependency.setObject(null);
                 }
@@ -465,9 +464,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             status = oldStatus;
             throw e;
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ DESTROY [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ DESTROY [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
     }
 
@@ -496,11 +493,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private Object onStart(final Start message) {
-        if (DEBUGGING_INFO) {
-            LOG.info("START ⟶ ⟶ C:{} [{}]",
-                    ObjectInfoUtils.unrollChain(message.getChain()),
-                    ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("START ⟶ ⟶ C:{} [{}]", ObjectInfoUtils.unrollChain(message.getChain()), ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var oldStatus = status;
         try {
@@ -528,22 +521,14 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             status = oldStatus;
             throw e;
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ START C:{} [{}]",
-                        ObjectInfoUtils.unrollChain(message.getChain()),
-                        ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ START C:{} [{}]", ObjectInfoUtils.unrollChain(message.getChain()), ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
 
         return this;
     }
 
     private Boolean onStop(final Stop message) {
-        if (DEBUGGING_INFO) {
-            LOG.info("STOP ⟶ ⟶ C:{} [{}]",
-                    ObjectInfoUtils.unrollChain(message.getChain()),
-                    ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("STOP ⟶ ⟶ C:{} [{}]", ObjectInfoUtils.unrollChain(message.getChain()), ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var force = message.isForce();
 
@@ -577,38 +562,28 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 throw e;
             }
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ STOP C:{} [{}]",
-                        ObjectInfoUtils.unrollChain(message.getChain()),
-                        ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ STOP C:{} [{}]", ObjectInfoUtils.unrollChain(message.getChain()), ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
 
         return Boolean.TRUE;
     }
 
     private void onUpstreamDependencyStopped(final InternalUpstreamDependencyStopped message) {
-        if (DEBUGGING_INFO) {
-            LOG.info("REMOVE UPSTREAM DEP ⟶ ⟶ ID:{} [{}]",
-                    message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("REMOVE UPSTREAM DEP ⟶ ⟶ ID:{} [{}]", message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
 
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             final var dependencyId = message.getSource().getId();
             final var dependency = dependencies.get(dependencyId);
             if (dependency != null) {
                 if (dependency.getType() != ActiveObjectDependency.Type.REQUIRED_FOR) {
                     //TODO SG exception
                 } else {
-                    dependencies.remove(dependencyId);
+                    mutableDependencies().remove(dependencyId);
                 }
             }
         }
 
-        if (DEBUGGING_INFO) {
-            LOG.info("⟵ ⟵ REMOVED UPSTREAM DEP ID:{} [{}]",
-                    message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("⟵ ⟵ REMOVED UPSTREAM DEP ID:{} [{}]", message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
     }
 
     private Object processNextMessage(final Object message) throws Exception {
@@ -654,8 +629,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     // ignore
                     return null;
                 } else if (message instanceof Start) {
-                    // ignore
-                    return instance;
+                    // ignore: already started, return the active object itself
+                    return this;
                 } else if (message instanceof Idle.Activate) {
                     onActivate(Idle.activate());
                     return null;
@@ -681,8 +656,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     onDeactivate(Idle.deactivate());
                     return null;
                 } else if (message instanceof Start) {
-                    // ignore
-                    return instance;
+                    // ignore: already started, return the active object itself
+                    return this;
                 } else if (message instanceof Idle.Activate) {
                     // ignore
                     return null;
@@ -735,15 +710,18 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             return;
         }
 
-        final var task = new QueueDispatchingTask();
-        executor.submit(task);
-        dispatchingTask.set(task);
+        executor.execute(new QueueDispatchingTask());
     }
 
     private void startDependency(final Start message, final DependencyState dependency, final Object dependencyId) {
-        // TODO SG configurable timeout
+        if (startGraph.reaches(dependencyId, id)) {
+            throw new DependencyException("Cyclic start: " + id + " -> " + dependencyId);
+        }
+
+        startGraph.add(id, dependencyId);
         try {
-            dependency.setObject(this.<ActiveObject<?>>redirectRequest(dependencyId, message).get(15, TimeUnit.SECONDS));
+            dependency.setObject(this.<ActiveObject<?>>redirectRequest(dependencyId, message)
+                    .get(config.getDependencyStartTimeout().toMillis(), TimeUnit.MILLISECONDS));
             dependency.setLastError(null);
         } catch (final Exception e) {
             dependency.setLastError(e.getMessage());
@@ -752,12 +730,16 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             } else {
                 LOG.warn("Cannot start optional dependency: {}", dependencyId, e);
             }
+        } finally {
+            startGraph.remove(id, dependencyId);
         }
     }
 
     private void startDependsOnDependencies(final Start message) {
-        if (MapUtils.isNotEmpty(dependencies)) {
-            for (final var entry : dependencies.entrySet()) {
+        if (!dependencies.isEmpty()) {
+            final var entries = new ArrayList<>(dependencies.entrySet());
+            entries.sort(Comparator.comparing(entry -> String.valueOf(entry.getKey())));
+            for (final var entry : entries) {
                 final var dependency = entry.getValue();
                 if (dependency.getType() == ActiveObjectDependency.Type.DEPENDS_ON) {
                     final var dependencyId = entry.getKey();
@@ -772,9 +754,9 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private boolean stopDependency(final Stop message, final DependencyState dependency, final Object dependencyId) {
-        // TODO SG configurable timeout
         try {
-            final var success = Boolean.TRUE.equals(dependency.getObject().request(message).get(15, TimeUnit.SECONDS));
+            final var success = Boolean.TRUE.equals(dependency.getObject()
+                    .request(message).get(config.getDependencyStopTimeout().toMillis(), TimeUnit.MILLISECONDS));
             dependency.setLastError(null);
             dependency.setObject(null);
             return success;
@@ -785,7 +767,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private void stopRequiredForDependencies(final Stop message) {
-        if (MapUtils.isNotEmpty(dependencies)) {
+        if (!dependencies.isEmpty()) {
             for (final var entry : new ArrayList<>(dependencies.entrySet())) {
                 final var dependency = entry.getValue();
                 if (dependency.isResolved() && dependency.getType() == ActiveObjectDependency.Type.REQUIRED_FOR) {
@@ -794,7 +776,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     if (!stopDependency(upstreamMsg, dependency, dependencyId)) {
                         throw new ObjectStopException("Object [" + id + "] cannot be stopped because blocked by [" + dependencyId + "]", dependencyId);
                     }
-                    dependencies.remove(dependencyId);
+                    mutableDependencies().remove(dependencyId);
                 }
             }
         }
@@ -804,12 +786,17 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         lastActivityTime = System.nanoTime();
     }
 
-    private final class QueueDispatchingTask extends ForkJoinTask<Void> {
-        @Serial
-        private static final long serialVersionUID = -1386299394796439117L;
+    private void lifecycleLog(final String format, final Object... args) {
+        if (config.isDebugLifecycleLogging() || DEBUGGING_INFO) {
+            LOG.info(format, args);
+        } else {
+            LOG.debug(format, args);
+        }
+    }
 
-        public boolean exec() {
-            //            numberOfThreads.incrementAndGet();
+    private final class QueueDispatchingTask implements Runnable {
+        @Override
+        public void run() {
             try {
                 while (queueTaskRunning.get()) {
                     var msg = queue.poll();
@@ -832,28 +819,16 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     } catch (final Exception e) {
                         LOG.error(e.getMessage(), e);
                         msg.fail(e);
+                    } finally {
+                        pendingMessages.decrementAndGet();
                     }
                 }
             } finally {
-//                if (numberOfThreads.decrementAndGet() > 0) {
-//                    LOG.warn("parallel threads in the dispatcher {}, {}", numberOfThreads.get(), id);
-//                } else {
-//                LOG.warn("stop dispatcher {}, {}", numberOfThreads.get(), id);
-//                }
-                dispatchingTask.set(null);
                 queueTaskRunning.set(false);
                 if (!queue.isEmpty()) {
                     processNextMessages();
                 }
             }
-            return true;
-        }
-
-        public Void getRawResult() {
-            return null;
-        }
-
-        public void setRawResult(final Void v) {
         }
     }
 }
