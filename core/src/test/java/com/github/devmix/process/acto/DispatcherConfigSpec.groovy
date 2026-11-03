@@ -132,6 +132,84 @@ class DispatcherConfigSpec extends Specification {
         Thread.getAllStackTraces().keySet().findAll { it.name == 'acto-heartbeat' && it.alive } as Set
     }
 
+
+    def "builder rejects non-positive timeouts"() {
+        when:
+        DispatcherConfig.builder()."$field"(value).build()
+
+        then:
+        def e = thrown(IllegalArgumentException)
+        e.message.contains(field)
+
+        where:
+        field                    | value
+        'heartbeatInterval'      | Duration.ZERO
+        'heartbeatInterval'      | Duration.ofSeconds(-1)
+        'idleTimeout'            | Duration.ZERO
+        'waitMessagesTimeout'    | Duration.ZERO
+        'destroyTimeout'         | Duration.ofMillis(-1)
+        'dependencyStartTimeout' | Duration.ZERO
+        'dependencyStopTimeout'  | Duration.ZERO
+    }
+
+    def "message timeout may be zero but not negative"() {
+        expect:
+        DispatcherConfig.builder().messageTimeout(Duration.ZERO).build().messageTimeout == Duration.ZERO
+
+        when:
+        DispatcherConfig.builder().messageTimeout(Duration.ofMillis(-1)).build()
+
+        then:
+        thrown(IllegalArgumentException)
+
+        when:
+        DispatcherConfig.builder().messageTimeout(null).build()
+
+        then:
+        thrown(IllegalArgumentException)
+    }
+
+    def "toBuilder copies all values and keeps validation"() {
+        given:
+        def config = DispatcherConfig.standard()
+
+        expect:
+        def copy = config.toBuilder().build()
+        copy.heartbeatInterval == config.heartbeatInterval
+        copy.idleTimeout == config.idleTimeout
+        copy.waitMessagesTimeout == config.waitMessagesTimeout
+        copy.messageTimeout == config.messageTimeout
+        copy.destroyTimeout == config.destroyTimeout
+        copy.dependencyStartTimeout == config.dependencyStartTimeout
+        copy.dependencyStopTimeout == config.dependencyStopTimeout
+        copy.debugLifecycleLogging == config.debugLifecycleLogging
+        copy.queueCapacity == config.queueCapacity
+        copy.queueOverflowPolicy == config.queueOverflowPolicy
+        copy.metrics == config.metrics
+
+        when:
+        config.toBuilder().heartbeatInterval(Duration.ZERO).build()
+
+        then:
+        thrown(IllegalArgumentException)
+    }
+
+    def "idle timeout shorter than heartbeat is allowed with a warning"() {
+        when:
+        def config = DispatcherConfig.builder()
+                .heartbeatInterval(Duration.ofMinutes(5))
+                .idleTimeout(Duration.ofSeconds(1))
+                .build()
+
+        then:
+        config.idleTimeout == Duration.ofSeconds(1)
+    }
+
+    def "standard configuration passes validation"() {
+        expect:
+        DispatcherConfig.standard() != null
+    }
+
     static class IdleObject implements OnMessageListener<IdleObject>, OnIdleListener<IdleObject> {
         final AtomicBoolean deactivated = new AtomicBoolean(false)
 
