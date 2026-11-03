@@ -53,5 +53,26 @@ class DispatchThreadNamingSpec extends Specification {
 
         cleanup:
         registry.destroy('named-object', true)
+        registry.shutdown(false)
+    }
+
+    def "each object gets its own dispatch thread name"() {
+        given:
+        def registry = new DefaultActiveObjectsDispatcher()
+        def first = new NameCapture()
+        def second = new NameCapture()
+        registry.create({ id, options -> first }, 'obj-a', null)
+        registry.create({ id, options -> second }, 'obj-b', null)
+
+        when:
+        registry.getById('obj-a').request('m').get(30, java.util.concurrent.TimeUnit.SECONDS)
+        registry.getById('obj-b').request('m').get(30, java.util.concurrent.TimeUnit.SECONDS)
+
+        then:
+        first.threadName.get() == 'acto-dispatch-obj-a'
+        second.threadName.get() == 'acto-dispatch-obj-b'
+
+        cleanup:
+        registry.shutdown(true)
     }
 }
