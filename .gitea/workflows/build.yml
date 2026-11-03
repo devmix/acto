@@ -53,18 +53,21 @@ jobs:
 
       - name: JPMS smoke test
         run: |
-          SLF4J=$(find ~/.m2/repository/org/slf4j/slf4j-api -name 'slf4j-api-*.jar' ! -name '*sources*' | sort | tail -1)
-          CC=$(find ~/.m2/repository -path '*commons-collections4*' -name 'commons-collections4-*.jar' ! -name '*sources*' | sort | tail -1)
-          MP="api/target/classes:core/target/classes:$SLF4J:$CC"
+          ./mvnw -B -ntp -q dependency:build-classpath -pl core -DincludeScope=compile -Dmdep.outputFile="$RUNNER_TEMP/cp.txt"
+          MP="api/target/classes:core/target/classes:$(cat "$RUNNER_TEMP/cp.txt")"
           javac --module-path "$MP" --add-modules devmix.process.acto.core -d "$RUNNER_TEMP/smoke" smoke/ModuleSmoke.java
           java --module-path "$MP" -cp "$RUNNER_TEMP/smoke" --add-modules devmix.process.acto.core ModuleSmoke
+          if javac --module-path "$MP" --add-modules devmix.process.acto.core -d "$RUNNER_TEMP/probe" smoke/EncapsulationProbe.java 2>/dev/null; then
+            echo "core.context must not be readable from outside the module"
+            exit 1
+          fi
 
       - name: API compatibility (japicmp)
         run: |
           git fetch --no-tags --depth 1 origin "refs/tags/v${JAPICMP_BASELINE}:refs/tags/v${JAPICMP_BASELINE}"
           git worktree add "$RUNNER_TEMP/baseline" "v${JAPICMP_BASELINE}"
           ./mvnw -B -ntp -q -f "$RUNNER_TEMP/baseline/pom.xml" install -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -pl api,core -am
-          ./mvnw -B -ntp -Pjapicmp verify -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -pl api,core
+          ./mvnw -B -ntp -Pjapicmp verify -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -Djapicmp.baseline.version="${JAPICMP_BASELINE}" -pl api,core
 
       - name: Stress tests
         if: success()
