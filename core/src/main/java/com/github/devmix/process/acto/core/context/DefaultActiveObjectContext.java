@@ -24,6 +24,7 @@ import com.github.devmix.process.acto.ActiveObjectDependency;
 import com.github.devmix.process.acto.ActiveObjectLifecycle;
 import com.github.devmix.process.acto.ActiveObjectStatus;
 import com.github.devmix.process.acto.ActiveObjectsDispatcher;
+import com.github.devmix.process.acto.core.config.DispatcherConfig;
 import com.github.devmix.process.acto.core.utils.ObjectInfoUtils;
 import com.github.devmix.process.acto.exceptions.DependencyException;
 import com.github.devmix.process.acto.exceptions.DispatchingException;
@@ -68,7 +69,12 @@ import java.util.function.Consumer;
 public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, ActiveObject<T> {
 
     public static final int NO_DEACTIVATION_TIMEOUT = -2;
-    public static boolean DEBUGGING_INFO = true;
+
+    /**
+     * @deprecated use {@code DispatcherConfig.debugLifecycleLogging} or the SLF4J DEBUG level
+     */
+    @Deprecated
+    public static boolean DEBUGGING_INFO = false;
 
     private static final Logger LOG = LoggerFactory.getLogger(DefaultActiveObjectContext.class);
 
@@ -76,6 +82,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final ActiveObjectLifecycle<T> lifecycle;
     private final @Getter Object options;
     private final ActiveObjectsDispatcher dispatcher;
+    private final DispatcherConfig config;
     private final ForkJoinPool executor;
     private final AtomicBoolean queueTaskRunning = new AtomicBoolean();
     private final AtomicInteger pendingMessages = new AtomicInteger();
@@ -93,16 +100,18 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
 
     public DefaultActiveObjectContext(final Object id, final Object options, @Nullable final T instance,
                                       final ActiveObjectLifecycle<T> lifecycle,
-                                      final ActiveObjectsDispatcher dispatcher, final ForkJoinPool executor) {
+                                      final ActiveObjectsDispatcher dispatcher, final ForkJoinPool executor,
+                                      final DispatcherConfig config) {
         this.id = id;
         this.lifecycle = lifecycle;
         this.options = options;
         this.dispatcher = dispatcher;
         this.executor = executor;
+        this.config = config;
         this.instance = instance;
 
-        this.setIdleTimeout(dispatcher.getIdleTimeout());
-        this.setWaitMessagesTimeout(dispatcher.getWaitMessagesTimeout());
+        this.setIdleTimeout(config.getIdleTimeout().toNanos());
+        this.setWaitMessagesTimeout(config.getWaitMessagesTimeout().toMillis());
 
         this.onCreate();
     }
@@ -249,7 +258,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     public void setIdleTimeout(final long idleTimeout) {
-        this.idleTimeout = idleTimeout == -1 ? dispatcher.getIdleTimeout() : idleTimeout;
+        this.idleTimeout = idleTimeout == -1 ? config.getIdleTimeout().toNanos() : idleTimeout;
         this.idleAllowed = this.idleTimeout != NO_DEACTIVATION_TIMEOUT
                 && (instance instanceof OnIdleListener || lifecycle instanceof OnIdleListener);
     }
@@ -261,7 +270,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
 
     @Override
     public void setWaitMessagesTimeout(final long waitMessagesTimeout) {
-        this.waitMessagesTimeout = waitMessagesTimeout == -1 ? dispatcher.getWaitMessagesTimeout() : waitMessagesTimeout;
+        this.waitMessagesTimeout = waitMessagesTimeout == -1 ? config.getWaitMessagesTimeout().toMillis() : waitMessagesTimeout;
     }
 
     @Override
@@ -353,9 +362,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             return;
         }
 
-        if (DEBUGGING_INFO) {
-            LOG.info("ACTIVATE ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("ACTIVATE ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var oldStatus = status;
         try {
@@ -372,16 +379,12 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             status = oldStatus;
             throw e;
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ ACTIVATE [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ ACTIVATE [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
     }
 
     private void onCreate() {
-        if (DEBUGGING_INFO) {
-            LOG.info("CREATE ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("CREATE ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var oldStatus = status;
         try {
@@ -398,9 +401,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             status = oldStatus;
             throw e;
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ CREATE [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ CREATE [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
     }
 
@@ -414,11 +415,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         if (force || now - lastActivityTime > idleTimeout) {
             final var oldStatus = status;
             try {
-                if (DEBUGGING_INFO) {
-                    LOG.info("DEACTIVATE ⟶ ⟶ F:{} T:{} [{}]",
-                            force, TimeUnit.NANOSECONDS.toMillis(now - lastActivityTime),
-                            ObjectInfoUtils.printObjectState(id, dependencies, status));
-                }
+                lifecycleLog("DEACTIVATE ⟶ ⟶ F:{} T:{} [{}]", force, TimeUnit.NANOSECONDS.toMillis(now - lastActivityTime), ObjectInfoUtils.printObjectState(id, dependencies, status));
 
                 status = ActiveObjectStatus.DEACTIVATING;
 
@@ -437,18 +434,13 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     throw e;
                 }
             } finally {
-                if (DEBUGGING_INFO) {
-                    LOG.info("⟵ ⟵ DEACTIVATE F:{}, [{}]",
-                            force, ObjectInfoUtils.printObjectState(id, dependencies, status));
-                }
+                lifecycleLog("⟵ ⟵ DEACTIVATE F:{}, [{}]", force, ObjectInfoUtils.printObjectState(id, dependencies, status));
             }
         }
     }
 
     private void onDestroy(final InternalDestroy message) {
-        if (DEBUGGING_INFO) {
-            LOG.info("DESTROY ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("DESTROY ⟶ ⟶ [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var oldStatus = status;
         try {
@@ -471,9 +463,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             status = oldStatus;
             throw e;
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ DESTROY [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ DESTROY [{}]", ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
     }
 
@@ -502,11 +492,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private Object onStart(final Start message) {
-        if (DEBUGGING_INFO) {
-            LOG.info("START ⟶ ⟶ C:{} [{}]",
-                    ObjectInfoUtils.unrollChain(message.getChain()),
-                    ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("START ⟶ ⟶ C:{} [{}]", ObjectInfoUtils.unrollChain(message.getChain()), ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var oldStatus = status;
         try {
@@ -534,22 +520,14 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             status = oldStatus;
             throw e;
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ START C:{} [{}]",
-                        ObjectInfoUtils.unrollChain(message.getChain()),
-                        ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ START C:{} [{}]", ObjectInfoUtils.unrollChain(message.getChain()), ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
 
         return this;
     }
 
     private Boolean onStop(final Stop message) {
-        if (DEBUGGING_INFO) {
-            LOG.info("STOP ⟶ ⟶ C:{} [{}]",
-                    ObjectInfoUtils.unrollChain(message.getChain()),
-                    ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("STOP ⟶ ⟶ C:{} [{}]", ObjectInfoUtils.unrollChain(message.getChain()), ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         final var force = message.isForce();
 
@@ -583,21 +561,14 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 throw e;
             }
         } finally {
-            if (DEBUGGING_INFO) {
-                LOG.info("⟵ ⟵ STOP C:{} [{}]",
-                        ObjectInfoUtils.unrollChain(message.getChain()),
-                        ObjectInfoUtils.printObjectState(id, dependencies, status));
-            }
+            lifecycleLog("⟵ ⟵ STOP C:{} [{}]", ObjectInfoUtils.unrollChain(message.getChain()), ObjectInfoUtils.printObjectState(id, dependencies, status));
         }
 
         return Boolean.TRUE;
     }
 
     private void onUpstreamDependencyStopped(final InternalUpstreamDependencyStopped message) {
-        if (DEBUGGING_INFO) {
-            LOG.info("REMOVE UPSTREAM DEP ⟶ ⟶ ID:{} [{}]",
-                    message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("REMOVE UPSTREAM DEP ⟶ ⟶ ID:{} [{}]", message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
 
         if (!dependencies.isEmpty()) {
             final var dependencyId = message.getSource().getId();
@@ -611,10 +582,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             }
         }
 
-        if (DEBUGGING_INFO) {
-            LOG.info("⟵ ⟵ REMOVED UPSTREAM DEP ID:{} [{}]",
-                    message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
-        }
+        lifecycleLog("⟵ ⟵ REMOVED UPSTREAM DEP ID:{} [{}]", message.getSource().getId(), ObjectInfoUtils.printObjectState(id, dependencies, status));
     }
 
     private Object processNextMessage(final Object message) throws Exception {
@@ -806,6 +774,14 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
 
     private void updateLastActivityTime() {
         lastActivityTime = System.nanoTime();
+    }
+
+    private void lifecycleLog(final String format, final Object... args) {
+        if (config.isDebugLifecycleLogging() || DEBUGGING_INFO) {
+            LOG.info(format, args);
+        } else {
+            LOG.debug(format, args);
+        }
     }
 
     private final class QueueDispatchingTask extends ForkJoinTask<Void> {

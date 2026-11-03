@@ -21,6 +21,27 @@ Artifact can be downloaded from [Maven Central](https://central.sonatype.com/art
 </dependency>
 ```
 
+## Configuration
+
+`DefaultActiveObjectsDispatcher` accepts an immutable `DispatcherConfig`:
+
+```java
+final var dispatcher = new DefaultActiveObjectsDispatcher(DispatcherConfig.builder()
+        .idleTimeout(Duration.ofMinutes(10))
+        .heartbeatInterval(Duration.ofMinutes(1))
+        .build());
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `heartbeatInterval` | 5 min | how often the heartbeat checks objects for idle |
+| `idleTimeout` | 5 min | inactivity time before an object is deactivated |
+| `waitMessagesTimeout` | 500 ms | how long the dispatch task waits for new messages before terminating |
+| `destroyTimeout` | 15 s | how long `destroy()` waits for the object to be destroyed |
+| `dependencyStartTimeout` | 15 s | how long the start of a dependency is awaited |
+| `dependencyStopTimeout` | 15 s | how long the stop of a dependency is awaited |
+| `debugLifecycleLogging` | `false` | log lifecycle events on the INFO level (otherwise DEBUG) |
+
 ## Example
 
 Create and send message (`getCounter`) to an [EchoObject](core/src/test/java/com/github/devmix/process/acto/fixtures/EchoObject.java) / [EchoOptions](core/src/test/java/com/github/devmix/process/acto/fixtures/EchoOptions.java):
@@ -82,11 +103,10 @@ public class ReadmeExample {
     public static final int MESSAGES = 100_000;
 
     public static void main(final String[] args) throws ExecutionException, InterruptedException, IOException, TimeoutException {
-        // Enable debugging information for the DefaultActiveObjectContext
-        DefaultActiveObjectContext.DEBUGGING_INFO = true;
-
-        // Create an instance of the Active Objects dispatcher
-        final var r = new DefaultActiveObjectsDispatcher();
+        // Create an instance of the Active Objects dispatcher with lifecycle logging enabled
+        final var r = new DefaultActiveObjectsDispatcher(DispatcherConfig.builder()
+                .debugLifecycleLogging(true)
+                .build());
 
         // Register factories for NodeObject and HelloWorldObject classes
         r.registerFactory(NodeObject.class, new NodeFactory());

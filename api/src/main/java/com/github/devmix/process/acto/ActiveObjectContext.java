@@ -106,7 +106,7 @@ public interface ActiveObjectContext<T> {
     /**
      * Returns the current idle timeout for this active object.
      *
-     * @return The idle timeout in milliseconds
+     * @return The idle timeout in nanoseconds
      */
     long getIdleTimeout();
 
