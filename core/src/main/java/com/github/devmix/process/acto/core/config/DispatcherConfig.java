@@ -1,0 +1,88 @@
+/*
+ * devMix · Process · Active Objects [ActO]
+ * Copyright (C) 2025, Sergey Grachev <sergey.grachev@yahoo.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package com.github.devmix.process.acto.core.config;
+
+import lombok.Builder;
+import lombok.Getter;
+
+import java.time.Duration;
+
+/**
+ * Immutable configuration of {@code DefaultActiveObjectsDispatcher} and the active object contexts
+ * created by it.
+ *
+ * <p>Use {@link #standard()} for the default values or {@link #builder()} to override them.</p>
+ *
+ * @author Sergey Grachev
+ */
+@Builder(toBuilder = true)
+@Getter
+public final class DispatcherConfig {
+
+    /**
+     * How often the heartbeat is sent to the active objects to detect idle ones.
+     */
+    @Builder.Default
+    private final Duration heartbeatInterval = Duration.ofMinutes(5);
+
+    /**
+     * How long an active object must be inactive before it is deactivated.
+     */
+    @Builder.Default
+    private final Duration idleTimeout = Duration.ofMinutes(5);
+
+    /**
+     * How long the dispatch task waits for new messages before terminating.
+     */
+    @Builder.Default
+    private final Duration waitMessagesTimeout = Duration.ofMillis(500);
+
+    /**
+     * How long {@code destroy()} waits for the object to be destroyed.
+     */
+    @Builder.Default
+    private final Duration destroyTimeout = Duration.ofSeconds(15);
+
+    /**
+     * How long the start of a dependency is awaited.
+     */
+    @Builder.Default
+    private final Duration dependencyStartTimeout = Duration.ofSeconds(15);
+
+    /**
+     * How long the stop of a dependency is awaited.
+     */
+    @Builder.Default
+    private final Duration dependencyStopTimeout = Duration.ofSeconds(15);
+
+    /**
+     * When {@code true}, lifecycle events are logged on the INFO level; otherwise on the DEBUG level.
+     */
+    @Builder.Default
+    private final boolean debugLifecycleLogging = false;
+
+    /**
+     * Returns a configuration with all default values.
+     *
+     * @return the standard configuration
+     */
+    public static DispatcherConfig standard() {
+        return builder().build();
+    }
+}

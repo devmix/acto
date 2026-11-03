@@ -22,7 +22,6 @@ import com.github.devmix.process.acto.exceptions.RegistryException;
 
 import javax.annotation.Nullable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -46,6 +45,9 @@ public interface ActiveObjectContext<T> {
     /**
      * Adds a dependency on another active object with specified optional flag.
      *
+     * <p>SHOULD be called from message handlers (the dispatch thread of this context) to keep
+     * the dependency map consistent with the lifecycle processing.</p>
+     *
      * @param objectId The identifier of the active object to depend on
      * @param optional True if the dependency is optional, false otherwise
      * @return An {@link ActiveObjectDependency} representing this dependency
@@ -53,15 +55,15 @@ public interface ActiveObjectContext<T> {
     ActiveObjectDependency addDependsOn(Object objectId, boolean optional);
 
     /**
-     * Waits until the message queue of this active object becomes empty.
+     * Waits until the message queue of this active object becomes empty and no message
+     * is being processed. Messages added after this method returns are not awaited.
      *
      * @param timeout The maximum time to wait
      * @param unit    The time unit for the specified timeout
      * @throws InterruptedException if the current thread is interrupted while waiting
-     * @throws ExecutionException   if an exception occurs during the execution
-     * @throws TimeoutException     if the specified waiting time elapses before completion
+     * @throws TimeoutException     if the specified waiting time elapses before the queue becomes empty
      */
-    void awaitEmptyQueue(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException;
+    void awaitEmptyQueue(long timeout, TimeUnit unit) throws InterruptedException, TimeoutException;
 
     /**
      * Retrieves a dependency on another active object by its identifier.
@@ -104,7 +106,7 @@ public interface ActiveObjectContext<T> {
     /**
      * Returns the current idle timeout for this active object.
      *
-     * @return The idle timeout in milliseconds
+     * @return The idle timeout in nanoseconds
      */
     long getIdleTimeout();
 

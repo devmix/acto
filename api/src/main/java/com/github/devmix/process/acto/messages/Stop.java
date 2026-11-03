@@ -92,21 +92,25 @@ public final class Stop {
     /**
      * Creates a new stop message that is an upstream continuation of the given stop message.
      * <p>
-     * The new message will have the specified source Active Object, and it will inherit the chain,
-     * visited set, and force flag from the original message.
+     * The new message will have the specified source Active Object, and it will inherit copies of the
+     * chain and visited set, and the force flag from the original message. The collections are copied
+     * defensively because each active object mutates them in its own dispatch thread.
      *
      * @param source  the new source Active Object for this stop message
      * @param message the original stop message to continue upstream from
      * @return a new Stop message that continues the stopping process upstream
      */
     public static Stop upstream(final ActiveObject<?> source, final Stop message) {
-        return new Stop(source, message.chain, message.visited, message.force);
+        return new Stop(source, new LinkedList<>(message.chain), message.visited, message.force);
     }
 
     /**
      * Creates a new stop message with the force flag set to true.
      * <p>
      * The resulting stop operation will be mandatory and cannot be ignored by any Active Object.
+     * A forced stop message is inserted at the head of the message queue and is guaranteed to be
+     * processed right after the currently running message handler; it does not interrupt a
+     * currently running handler.
      *
      * @return a new forced Stop message
      */

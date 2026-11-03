@@ -23,20 +23,23 @@ import com.github.devmix.process.acto.ActiveObjectFactory;
 import com.github.devmix.process.acto.ActiveObjectLifecycle;
 import com.github.devmix.process.acto.ActiveObjectStatus;
 import com.github.devmix.process.acto.ActiveObjectsDispatcher;
+import com.github.devmix.process.acto.core.config.DispatcherConfig;
 import com.github.devmix.process.acto.core.context.DefaultActiveObjectContext;
 import com.github.devmix.process.acto.core.context.InternalDestroy;
+import com.github.devmix.process.acto.core.context.StartGraph;
 import com.github.devmix.process.acto.exceptions.RegistryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-import java.io.Serial;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -51,20 +54,42 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
     private final Map<Class<?>, ActiveObjectFactory<?, ?, ?>> objectFactories = new ConcurrentHashMap<>();
     private final Map<Class<?>, ActiveObjectLifecycle<?>> objectLifecycles = new ConcurrentHashMap<>();
     private final Map<Object, DefaultActiveObjectContext<?>> contexts = new ConcurrentHashMap<>();
-    private final ForkJoinPool executor;
+    private final Executor executor;
+    private final StartGraph startGraph = new StartGraph();
     private final AtomicBoolean started = new AtomicBoolean();
 
-    private volatile HeartbeatTask heartbeatTask;
-    private long heartbeatInterval;
+    private volatile DispatcherConfig config;
+    private volatile ScheduledExecutorService heartbeatExecutor;
+    private volatile ScheduledFuture<?> heartbeatFuture;
 
     public DefaultActiveObjectsDispatcher() {
-        this(TimeUnit.MINUTES.toMillis(5));
+        this(DispatcherConfig.standard());
     }
 
+    /**
+     * @param heartbeatInterval heartbeat interval in milliseconds
+     * @deprecated use {@link #DefaultActiveObjectsDispatcher(DispatcherConfig)}
+     */
+    @Deprecated
     public DefaultActiveObjectsDispatcher(final long heartbeatInterval) {
-        this.heartbeatInterval = heartbeatInterval;
-        this.executor = new ForkJoinPool();
+        this(DispatcherConfig.builder()
+                .heartbeatInterval(java.time.Duration.ofMillis(heartbeatInterval))
+                .build());
+    }
+
+    public DefaultActiveObjectsDispatcher(final DispatcherConfig config) {
+        this.config = config;
+        this.executor = Executors.newVirtualThreadPerTaskExecutor();
         start();
+    }
+
+    /**
+     * Returns the configuration of this dispatcher.
+     *
+     * @return the dispatcher configuration
+     */
+    public DispatcherConfig getConfig() {
+        return config;
     }
 
     @SuppressWarnings("unchecked")
@@ -88,7 +113,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
 
             final var instance = factory != null ? factory.create(id, options) : null;
 
-            return new DefaultActiveObjectContext<T>(id, options, instance, lifecycle, this, executor);
+            return new DefaultActiveObjectContext<T>(id, options, instance, lifecycle, this, executor, config, startGraph);
         });
     }
 
@@ -107,7 +132,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
 
             log.debug("create new object: factory=[{}] lifecycle=[{}] id=[{}]", factory, lifecycle, k);
 
-            return new DefaultActiveObjectContext<T>(id, options, instance, lifecycle, this, executor);
+            return new DefaultActiveObjectContext<T>(id, options, instance, lifecycle, this, executor, config, startGraph);
         });
     }
 
@@ -128,22 +153,35 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
         return (ActiveObject<T>) recipient;
     }
 
+    /**
+     * @return heartbeat interval in milliseconds
+     */
     public long getHeartbeatInterval() {
-        return heartbeatInterval;
+        return config.getHeartbeatInterval().toMillis();
     }
 
+    /**
+     * @param heartbeatInterval heartbeat interval in milliseconds
+     * @deprecated use {@link #DefaultActiveObjectsDispatcher(DispatcherConfig)}; changing the
+     *         interval after start is applied to the running heartbeat but is not persisted
+     *         to the configuration of already created contexts
+     */
+    @Deprecated
     public void setHeartbeatInterval(final long heartbeatInterval) {
-        this.heartbeatInterval = heartbeatInterval;
+        this.config = config.toBuilder()
+                .heartbeatInterval(java.time.Duration.ofMillis(heartbeatInterval))
+                .build();
+        rescheduleHeartbeat();
     }
 
     @Override
     public long getIdleTimeout() {
-        return TimeUnit.MINUTES.toNanos(5);
+        return config.getIdleTimeout().toNanos();
     }
 
     @Override
     public long getWaitMessagesTimeout() {
-        return 500;
+        return config.getWaitMessagesTimeout().toMillis();
     }
 
     @Override
@@ -170,11 +208,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
                     }
                 }
             } finally {
-                final var task = heartbeatTask;
-                if (task != null) {
-                    task.cancel(true);
-                    heartbeatTask = null;
-                }
+                stopHeartbeat();
             }
         }
     }
@@ -214,7 +248,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
     }
 
     private long getObjectStopTimeout() {
-        return TimeUnit.SECONDS.toMillis(15);
+        return config.getDestroyTimeout().toMillis();
     }
 
     private void checkExisting(final Object id, final DefaultActiveObjectContext<?> current) {
@@ -235,42 +269,54 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
 
     private void start() {
         if (started.compareAndSet(false, true)) {
-            heartbeatTask = (HeartbeatTask) executor.submit(new HeartbeatTask());
+            heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+                final var thread = new Thread(r, "acto-heartbeat");
+                thread.setDaemon(true);
+                return thread;
+            });
+            rescheduleHeartbeat();
         }
     }
 
-    private class HeartbeatTask extends ForkJoinTask<Void> {
-
-        @Serial
-        private static final long serialVersionUID = 3127215789445995259L;
-
-        @Override
-        public Void getRawResult() {
-            return null;
+    private void rescheduleHeartbeat() {
+        final var executor = heartbeatExecutor;
+        if (executor == null || executor.isShutdown()) {
+            return;
         }
 
-        @Override
-        protected void setRawResult(final Void value) {
-
+        final var previous = heartbeatFuture;
+        if (previous != null) {
+            previous.cancel(false);
         }
 
-        @Override
-        protected boolean exec() {
-            while (started.get()) {
-                try {
-                    //noinspection BusyWait
-                    Thread.sleep(TimeUnit.MILLISECONDS.toMillis(heartbeatInterval));
-                } catch (final InterruptedException e) {
-                    break;
-                }
+        final var interval = Math.max(1L, config.getHeartbeatInterval().toMillis());
+        heartbeatFuture = executor.scheduleWithFixedDelay(
+                this::heartbeatOnce, interval, interval, TimeUnit.MILLISECONDS);
+    }
 
-                for (final var context : contexts.values()) {
-                    if (started.get()) {
-                        context.heartbeat();
-                    }
-                }
+    private void heartbeatOnce() {
+        if (!started.get()) {
+            return;
+        }
+
+        for (final var context : contexts.values()) {
+            if (!started.get()) {
+                return;
             }
-            return true;
+            try {
+                context.heartbeat();
+            } catch (final Exception e) {
+                log.warn("heartbeat failed for [{}]", context.getId(), e);
+            }
+        }
+    }
+
+    private void stopHeartbeat() {
+        final var executor = heartbeatExecutor;
+        if (executor != null) {
+            executor.shutdownNow();
+            heartbeatExecutor = null;
+            heartbeatFuture = null;
         }
     }
 }
