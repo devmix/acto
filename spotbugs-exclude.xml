@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Triage of the SpotBugs pilot run (issue #21). Every suppression below was reviewed and
+  accepted with the stated justification; new defects must fail the build instead of being
+  added here silently.
+-->
+<FindBugsFilter
+        xmlns="https://github.com/spotbugs/filter/3.0.0"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="https://github.com/spotbugs/filter/3.0.0 https://raw.githubusercontent.com/spotbugs/spotbugs/3.1.0/spotbugs/etc/findbugsfilter.xsd">
+
+    <!-- Start/Stop carry object identifiers and the dependency chain as control data owned
+         by the dispatcher; the chain is consumed, never mutated by callers. -->
+    <Match>
+        <Or>
+            <Class name="com.github.devmix.process.acto.messages.Start"/>
+            <Class name="com.github.devmix.process.acto.messages.Stop"/>
+        </Or>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+
+    <!-- The context intentionally shares the dispatcher-owned StartGraph instance:
+         cycle detection requires one shared view, copying it per context would break it. -->
+    <Match>
+        <Class name="com.github.devmix.process.acto.core.context.DefaultActiveObjectContext"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- MicrometerDispatcherMetrics must hold the application's MeterRegistry by reference:
+         registering meters into a copy would be pointless. Sharing the registry is the
+         entire point of the class. -->
+    <Match>
+        <Class name="com.github.devmix.process.acto.core.metrics.MicrometerDispatcherMetrics"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- DEBUGGING_INFO is a deprecated but still functional global switch kept for 0.1.x
+         compatibility; it is scheduled for removal and must stay mutable until then. -->
+    <Match>
+        <Class name="com.github.devmix.process.acto.core.context.DefaultActiveObjectContext"/>
+        <Bug pattern="MS_SHOULD_BE_FINAL"/>
+    </Match>
+
+    <!-- The constructor invokes onCreate() by design: a failing lifecycle callback must
+         abort creation, and the registry never publishes a context whose constructor threw,
+         so the partially constructed object cannot be finalized by an attacker. -->
+    <Match>
+        <Class name="com.github.devmix.process.acto.core.context.DefaultActiveObjectContext"/>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    </Match>
+
+    <!-- Same design decision as CT_CONSTRUCTOR_THROW above: onCreate() is the documented
+         lifecycle hook dispatched from the constructor. -->
+    <Match>
+        <Class name="com.github.devmix.process.acto.core.context.DefaultActiveObjectContext"/>
+        <Bug pattern="MC_OVERRIDABLE_METHOD_CALL_IN_CONSTRUCTOR"/>
+    </Match>
+
+    <!-- Log injection requires a hostile object identifier; ids are chosen by the embedding
+         application, not by an external attacker. Log output sanitization is the operator's
+         concern (logging framework configuration), not the library's.
+         TODO: revisit if logging of truly external input (network payloads, user text) is
+         ever added - this blanket match would hide it. -->
+    <Match>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+</FindBugsFilter>
