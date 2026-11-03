@@ -81,7 +81,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final AtomicInteger pendingMessages = new AtomicInteger();
     private final LinkedBlockingDeque<QueueEntry<?>> queue = new LinkedBlockingDeque<>();
 
-    private final Map<Object, DependencyState> dependencies = new ConcurrentHashMap<>();
+    private volatile Map<Object, DependencyState> dependencies = Map.of();
 
     private volatile @Getter T instance;
     private volatile @Getter ActiveObjectStatus status = ActiveObjectStatus.CREATING;
@@ -278,8 +278,21 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private DependencyState addDependency(final Object objectId, final ActiveObjectDependency.Type type, final boolean optional) {
         final var result = new DependencyState(type, optional);
 
-        dependencies.put(objectId, result);
+        mutableDependencies().put(objectId, result);
 
+        return result;
+    }
+
+    /**
+     * The dependency map is allocated lazily: objects without dependencies share the immutable
+     * empty map instance, so the per-object overhead is zero until the first dependency is added.
+     */
+    private synchronized Map<Object, DependencyState> mutableDependencies() {
+        if (!(dependencies instanceof ConcurrentHashMap<?, ?>)) {
+            dependencies = new ConcurrentHashMap<>();
+        }
+        @SuppressWarnings("unchecked")
+        final var result = (Map<Object, DependencyState>) dependencies;
         return result;
     }
 
@@ -593,7 +606,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 if (dependency.getType() != ActiveObjectDependency.Type.REQUIRED_FOR) {
                     //TODO SG exception
                 } else {
-                    dependencies.remove(dependencyId);
+                    mutableDependencies().remove(dependencyId);
                 }
             }
         }
@@ -785,7 +798,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     if (!stopDependency(upstreamMsg, dependency, dependencyId)) {
                         throw new ObjectStopException("Object [" + id + "] cannot be stopped because blocked by [" + dependencyId + "]", dependencyId);
                     }
-                    dependencies.remove(dependencyId);
+                    mutableDependencies().remove(dependencyId);
                 }
             }
         }
