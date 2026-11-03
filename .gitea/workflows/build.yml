@@ -8,6 +8,8 @@ on:
 env:
   # bump manually when a new Temurin 21 build ships
   JDK_VERSION: 21.0.13+9
+  # last released version, used as the japicmp binary-compatibility baseline
+  JAPICMP_BASELINE: 0.2.0
 
 jobs:
   build:
@@ -48,6 +50,24 @@ jobs:
 
       - name: Verify (unit tests)
         run: ./mvnw -B -ntp verify
+
+      - name: JPMS smoke test
+        run: |
+          ./mvnw -B -ntp -q compile dependency:build-classpath -pl core -am -DincludeScope=compile -Dmdep.outputFile="$RUNNER_TEMP/cp.txt"
+          MP="api/target/classes:core/target/classes:$(cat "$RUNNER_TEMP/cp.txt")"
+          javac --module-path "$MP" --add-modules devmix.process.acto.core -d "$RUNNER_TEMP/smoke" smoke/ModuleSmoke.java
+          java --module-path "$MP" -cp "$RUNNER_TEMP/smoke" --add-modules devmix.process.acto.core ModuleSmoke
+          if javac --module-path "$MP" --add-modules devmix.process.acto.core -d "$RUNNER_TEMP/probe" smoke/EncapsulationProbe.java 2>/dev/null; then
+            echo "core.context must not be readable from outside the module"
+            exit 1
+          fi
+
+      - name: API compatibility (japicmp)
+        run: |
+          git fetch --no-tags --depth 1 origin "refs/tags/v${JAPICMP_BASELINE}:refs/tags/v${JAPICMP_BASELINE}"
+          git worktree add "$RUNNER_TEMP/baseline" "v${JAPICMP_BASELINE}"
+          ./mvnw -B -ntp -q -f "$RUNNER_TEMP/baseline/pom.xml" install -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -pl api,core -am
+          ./mvnw -B -ntp -Pjapicmp verify -DskipTests -Dspotbugs.skip=true -Djacoco.skip=true -Djapicmp.baseline.version="${JAPICMP_BASELINE}" -pl api,core -am
 
       - name: Stress tests
         if: success()
