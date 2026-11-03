@@ -57,8 +57,9 @@ Long counter = obj.get(EchoObject::getCounter).get();
 
 ## Use Cases
 
-Six runnable, tested patterns — ledger, ETL pipeline, resource holder, rate limiter, event bridge,
-write-through cache — see [examples/README.md](examples/README.md).
+A catalog of runnable, tested patterns by domain — ERP/ECM, fintech/HFT, logistics, EdTech,
+MarTech, MedTech, observability, ETL, BI and more, each rated for how well it fits the
+active object pattern — see [examples/README.md](examples/README.md).
 
 ## Object Lifecycle
 
