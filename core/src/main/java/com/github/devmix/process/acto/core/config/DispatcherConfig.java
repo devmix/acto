@@ -21,6 +21,8 @@ package com.github.devmix.process.acto.core.config;
 import com.github.devmix.process.acto.DispatcherMetrics;
 import lombok.Builder;
 import lombok.Getter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 
@@ -28,13 +30,19 @@ import java.time.Duration;
  * Immutable configuration of {@code DefaultActiveObjectsDispatcher} and the active object contexts
  * created by it.
  *
- * <p>Use {@link #standard()} for the default values or {@link #builder()} to override them.</p>
+ * <p>Use {@link #standard()} for the default values or {@link #builder()} to override them.
+ * {@code builder().build()} validates the parameters: every timeout must be positive
+ * ({@code messageTimeout} may be {@code ZERO} to disable the deadline), and a warning is logged
+ * when {@code idleTimeout} is shorter than {@code heartbeatInterval} (deactivation then fires
+ * late and unevenly). Invalid values fail with {@link IllegalArgumentException}.</p>
  *
  * @author Sergey Grachev
  */
-@Builder(toBuilder = true)
+@Builder(builderMethodName = "rawBuilder")
 @Getter
 public final class DispatcherConfig {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DispatcherConfig.class);
 
     /**
      * How often the heartbeat is sent to the active objects to detect idle ones.
@@ -110,6 +118,67 @@ public final class DispatcherConfig {
      */
     @Builder.Default
     private final DispatcherMetrics metrics = DispatcherMetrics.NOOP;
+
+    /**
+     * Returns a builder that validates the configuration on {@code build()}.
+     *
+     * @return a validating builder
+     */
+    public static DispatcherConfigBuilder builder() {
+        return new ValidatingBuilder();
+    }
+
+    /**
+     * Returns a validating builder pre-populated with this configuration's values.
+     *
+     * @return a validating builder
+     */
+    public DispatcherConfigBuilder toBuilder() {
+        return builder()
+                .heartbeatInterval(heartbeatInterval)
+                .idleTimeout(idleTimeout)
+                .waitMessagesTimeout(waitMessagesTimeout)
+                .messageTimeout(messageTimeout)
+                .destroyTimeout(destroyTimeout)
+                .dependencyStartTimeout(dependencyStartTimeout)
+                .dependencyStopTimeout(dependencyStopTimeout)
+                .debugLifecycleLogging(debugLifecycleLogging)
+                .queueCapacity(queueCapacity)
+                .queueOverflowPolicy(queueOverflowPolicy)
+                .metrics(metrics);
+    }
+
+    private static final class ValidatingBuilder extends DispatcherConfigBuilder {
+
+        @Override
+        public DispatcherConfig build() {
+            return validate(super.build());
+        }
+    }
+
+    private static DispatcherConfig validate(final DispatcherConfig config) {
+        requirePositive("heartbeatInterval", config.heartbeatInterval);
+        requirePositive("idleTimeout", config.idleTimeout);
+        requirePositive("waitMessagesTimeout", config.waitMessagesTimeout);
+        requirePositive("destroyTimeout", config.destroyTimeout);
+        requirePositive("dependencyStartTimeout", config.dependencyStartTimeout);
+        requirePositive("dependencyStopTimeout", config.dependencyStopTimeout);
+        if (config.messageTimeout == null || config.messageTimeout.isNegative()) {
+            throw new IllegalArgumentException("messageTimeout must not be negative: " + config.messageTimeout);
+        }
+        if (config.idleTimeout.compareTo(config.heartbeatInterval) < 0) {
+            LOG.warn("idleTimeout [{}] is shorter than heartbeatInterval [{}]: "
+                            + "idle detection only runs on heartbeats, so deactivation will fire late and unevenly",
+                    config.idleTimeout, config.heartbeatInterval);
+        }
+        return config;
+    }
+
+    private static void requirePositive(final String name, final Duration value) {
+        if (value == null || value.isZero() || value.isNegative()) {
+            throw new IllegalArgumentException(name + " must be positive: " + value);
+        }
+    }
 
     /**
      * Returns a configuration with all default values.
