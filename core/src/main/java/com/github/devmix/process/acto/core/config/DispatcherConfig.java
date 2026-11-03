@@ -18,6 +18,7 @@
 
 package com.github.devmix.process.acto.core.config;
 
+import com.github.devmix.process.acto.DispatcherMetrics;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -103,6 +104,12 @@ public final class DispatcherConfig {
      */
     @Builder.Default
     private final QueueOverflowPolicy queueOverflowPolicy = QueueOverflowPolicy.FAIL;
+
+    /**
+     * Observability hooks. The default {@link DispatcherMetrics#NOOP} adds no behavior.
+     */
+    @Builder.Default
+    private final DispatcherMetrics metrics = DispatcherMetrics.NOOP;
 
     /**
      * Returns a configuration with all default values.

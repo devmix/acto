@@ -24,6 +24,7 @@ import com.github.devmix.process.acto.ActiveObjectDependency;
 import com.github.devmix.process.acto.ActiveObjectLifecycle;
 import com.github.devmix.process.acto.ActiveObjectStatus;
 import com.github.devmix.process.acto.ActiveObjectsDispatcher;
+import com.github.devmix.process.acto.DispatcherMetrics;
 import com.github.devmix.process.acto.core.config.DispatcherConfig;
 import com.github.devmix.process.acto.core.config.QueueOverflowPolicy;
 import com.github.devmix.process.acto.core.utils.ObjectInfoUtils;
@@ -90,6 +91,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final AtomicBoolean queueTaskRunning = new AtomicBoolean();
     private final AtomicInteger pendingMessages = new AtomicInteger();
     private final AtomicLong rejectedMessages = new AtomicLong();
+    private final DispatcherMetrics metrics;
     private volatile Thread dispatchThread;
     private final LinkedBlockingDeque<QueueEntry<?>> queue = new LinkedBlockingDeque<>();
 
@@ -113,6 +115,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         this.dispatcher = dispatcher;
         this.executor = executor;
         this.config = config;
+        this.metrics = config.getMetrics();
         this.startGraph = startGraph;
         this.instance = instance;
 
@@ -320,6 +323,18 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         addToQueue(entry, false);
     }
 
+    /**
+     * A user-supplied metrics implementation must never break message processing:
+     * every callback is invoked through this guard.
+     */
+    private void safeMetrics(final Runnable callback) {
+        try {
+            callback.run();
+        } catch (final Exception e) {
+            LOG.warn("Metrics callback failed for object [{}]: {}", id, e.toString());
+        }
+    }
+
     private <R> void addToQueue(final QueueEntry<R> entry, final boolean userMessage) {
         final var message = entry.message();
         if (status == ActiveObjectStatus.DESTROYED && !(message instanceof InternalDestroy)) {
@@ -349,6 +364,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                 }
             } else {
                 rejectedMessages.incrementAndGet();
+                safeMetrics(() -> metrics.messageRejected(id));
                 final var overflow = new QueueOverflowException(
                         "Queue of object [" + id + "] is full: capacity [" + config.getQueueCapacity() + "], message [" + message + "] rejected");
                 if (entry.future() != null) {
@@ -374,6 +390,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             // destroy request is processed first, so no accepted work is lost
             queue.offerLast(entry);
         }
+        safeMetrics(() -> metrics.queueDepth(id, queue.size()));
         processNextMessages();
     }
 
@@ -540,6 +557,7 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             }
 
             status = ActiveObjectStatus.DESTROYED;
+            safeMetrics(() -> metrics.objectDestroyed(id));
         } catch (final Exception e) {
             status = oldStatus;
             throw e;
@@ -926,7 +944,17 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                             // the caller timed out or cancelled this request: skip the processing
                             continue;
                         }
-                        msg.success(processNextMessage(msg.message()));
+                        final var startedAt = System.nanoTime();
+                        final var processed = processNextMessage(msg.message());
+                        msg.success(processed);
+                        if (isUserMessage(msg.message())) {
+                            safeMetrics(() -> metrics.messageProcessed(id, System.nanoTime() - startedAt));
+                        }
+                        if (status != ActiveObjectStatus.DESTROYED) {
+                            // after destroy the queue is meaningless: reporting its depth would
+                            // re-register the per-object gauges that objectDestroyed just removed
+                            safeMetrics(() -> metrics.queueDepth(id, queue.size()));
+                        }
                     } catch (final Exception e) {
                         LOG.error(e.getMessage(), e);
                         msg.fail(e);
