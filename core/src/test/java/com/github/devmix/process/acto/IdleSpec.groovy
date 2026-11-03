@@ -111,6 +111,9 @@ class IdleSpec extends Specification {
         then:
         object.status == ActiveObjectStatus.STARTED
         object.instance.started.get() == 1
+
+        cleanup:
+        registry.shutdown(true)
     }
 
     def 'deactivation is disabled with NO_DEACTIVATION_TIMEOUT'() {
