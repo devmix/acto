@@ -17,7 +17,7 @@ Artifact can be downloaded from [Maven Central](https://central.sonatype.com/art
 <dependency>
     <groupId>com.github.devmix.process.acto</groupId>
     <artifactId>devmix-process-acto-core</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
