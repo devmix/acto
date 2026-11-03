@@ -398,7 +398,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private <R> CompletableFuture<R> dispatch(final Object message, final boolean userMessage) {
         final var dispatcherMessage = new QueueEntry<R>(message, new CompletableFuture<>());
         if (userMessage && isUserMessage(message) && !config.getMessageTimeout().isZero()) {
-            dispatcherMessage.future().orTimeout(config.getMessageTimeout().toMillis(), TimeUnit.MILLISECONDS);
+            // nanoseconds, not milliseconds: a sub-millisecond timeout must not truncate to 0
+            dispatcherMessage.future().orTimeout(config.getMessageTimeout().toNanos(), TimeUnit.NANOSECONDS);
         }
         addToQueue(dispatcherMessage, userMessage);
         return dispatcherMessage.future();
