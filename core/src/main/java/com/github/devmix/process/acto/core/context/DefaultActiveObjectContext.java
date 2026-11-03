@@ -48,14 +48,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-import java.io.Serial;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -83,7 +82,8 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     private final @Getter Object options;
     private final ActiveObjectsDispatcher dispatcher;
     private final DispatcherConfig config;
-    private final ForkJoinPool executor;
+    private final Executor executor;
+    private final StartGraph startGraph;
     private final AtomicBoolean queueTaskRunning = new AtomicBoolean();
     private final AtomicInteger pendingMessages = new AtomicInteger();
     private final LinkedBlockingDeque<QueueEntry<?>> queue = new LinkedBlockingDeque<>();
@@ -100,14 +100,15 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
 
     public DefaultActiveObjectContext(final Object id, final Object options, @Nullable final T instance,
                                       final ActiveObjectLifecycle<T> lifecycle,
-                                      final ActiveObjectsDispatcher dispatcher, final ForkJoinPool executor,
-                                      final DispatcherConfig config) {
+                                      final ActiveObjectsDispatcher dispatcher, final Executor executor,
+                                      final DispatcherConfig config, final StartGraph startGraph) {
         this.id = id;
         this.lifecycle = lifecycle;
         this.options = options;
         this.dispatcher = dispatcher;
         this.executor = executor;
         this.config = config;
+        this.startGraph = startGraph;
         this.instance = instance;
 
         this.setIdleTimeout(config.getIdleTimeout().toNanos());
@@ -709,13 +710,18 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             return;
         }
 
-        executor.submit(new QueueDispatchingTask());
+        executor.execute(new QueueDispatchingTask());
     }
 
     private void startDependency(final Start message, final DependencyState dependency, final Object dependencyId) {
-        // TODO SG configurable timeout
+        if (startGraph.reaches(dependencyId, id)) {
+            throw new DependencyException("Cyclic start: " + id + " -> " + dependencyId);
+        }
+
+        startGraph.add(id, dependencyId);
         try {
-            dependency.setObject(this.<ActiveObject<?>>redirectRequest(dependencyId, message).get(15, TimeUnit.SECONDS));
+            dependency.setObject(this.<ActiveObject<?>>redirectRequest(dependencyId, message)
+                    .get(config.getDependencyStartTimeout().toMillis(), TimeUnit.MILLISECONDS));
             dependency.setLastError(null);
         } catch (final Exception e) {
             dependency.setLastError(e.getMessage());
@@ -724,12 +730,16 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
             } else {
                 LOG.warn("Cannot start optional dependency: {}", dependencyId, e);
             }
+        } finally {
+            startGraph.remove(id, dependencyId);
         }
     }
 
     private void startDependsOnDependencies(final Start message) {
         if (!dependencies.isEmpty()) {
-            for (final var entry : dependencies.entrySet()) {
+            final var entries = new ArrayList<>(dependencies.entrySet());
+            entries.sort(Comparator.comparing(entry -> String.valueOf(entry.getKey())));
+            for (final var entry : entries) {
                 final var dependency = entry.getValue();
                 if (dependency.getType() == ActiveObjectDependency.Type.DEPENDS_ON) {
                     final var dependencyId = entry.getKey();
@@ -744,9 +754,9 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
     }
 
     private boolean stopDependency(final Stop message, final DependencyState dependency, final Object dependencyId) {
-        // TODO SG configurable timeout
         try {
-            final var success = Boolean.TRUE.equals(dependency.getObject().request(message).get(15, TimeUnit.SECONDS));
+            final var success = Boolean.TRUE.equals(dependency.getObject()
+                    .request(message).get(config.getDependencyStopTimeout().toMillis(), TimeUnit.MILLISECONDS));
             dependency.setLastError(null);
             dependency.setObject(null);
             return success;
@@ -784,11 +794,9 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
         }
     }
 
-    private final class QueueDispatchingTask extends ForkJoinTask<Void> {
-        @Serial
-        private static final long serialVersionUID = -1386299394796439117L;
-
-        public boolean exec() {
+    private final class QueueDispatchingTask implements Runnable {
+        @Override
+        public void run() {
             try {
                 while (queueTaskRunning.get()) {
                     var msg = queue.poll();
@@ -821,14 +829,6 @@ public class DefaultActiveObjectContext<T> implements ActiveObjectContext<T>, Ac
                     processNextMessages();
                 }
             }
-            return true;
-        }
-
-        public Void getRawResult() {
-            return null;
-        }
-
-        public void setRawResult(final Void v) {
         }
     }
 }

@@ -26,6 +26,7 @@ import com.github.devmix.process.acto.ActiveObjectsDispatcher;
 import com.github.devmix.process.acto.core.config.DispatcherConfig;
 import com.github.devmix.process.acto.core.context.DefaultActiveObjectContext;
 import com.github.devmix.process.acto.core.context.InternalDestroy;
+import com.github.devmix.process.acto.core.context.StartGraph;
 import com.github.devmix.process.acto.exceptions.RegistryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,8 +36,8 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -53,7 +54,8 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
     private final Map<Class<?>, ActiveObjectFactory<?, ?, ?>> objectFactories = new ConcurrentHashMap<>();
     private final Map<Class<?>, ActiveObjectLifecycle<?>> objectLifecycles = new ConcurrentHashMap<>();
     private final Map<Object, DefaultActiveObjectContext<?>> contexts = new ConcurrentHashMap<>();
-    private final ForkJoinPool executor;
+    private final Executor executor;
+    private final StartGraph startGraph = new StartGraph();
     private final AtomicBoolean started = new AtomicBoolean();
 
     private volatile DispatcherConfig config;
@@ -77,7 +79,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
 
     public DefaultActiveObjectsDispatcher(final DispatcherConfig config) {
         this.config = config;
-        this.executor = new ForkJoinPool();
+        this.executor = Executors.newVirtualThreadPerTaskExecutor();
         start();
     }
 
@@ -111,7 +113,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
 
             final var instance = factory != null ? factory.create(id, options) : null;
 
-            return new DefaultActiveObjectContext<T>(id, options, instance, lifecycle, this, executor, config);
+            return new DefaultActiveObjectContext<T>(id, options, instance, lifecycle, this, executor, config, startGraph);
         });
     }
 
@@ -130,7 +132,7 @@ public class DefaultActiveObjectsDispatcher implements ActiveObjectsDispatcher {
 
             log.debug("create new object: factory=[{}] lifecycle=[{}] id=[{}]", factory, lifecycle, k);
 
-            return new DefaultActiveObjectContext<T>(id, options, instance, lifecycle, this, executor, config);
+            return new DefaultActiveObjectContext<T>(id, options, instance, lifecycle, this, executor, config, startGraph);
         });
     }
 
